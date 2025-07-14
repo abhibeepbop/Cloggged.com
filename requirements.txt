@@ -1,3 +1,7 @@
 google-auth
 google-auth-oauthlib
 google-api-python-client
+langchain
+langchain-openai
+firebase-admin
+python-dotenv
