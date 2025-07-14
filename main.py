@@ -18,7 +18,9 @@ class GmailSpamClassifier:
         """Fetch recent emails from Gmail"""
         try:
             results = self.service.users().messages().list(
-                userId='me', 
+                userId='me',
+                labelIds=['INBOX'],
+                q='-label:AI_Processed',
                 maxResults=max_results
             ).execute()
             
@@ -27,7 +29,7 @@ class GmailSpamClassifier:
             
             for msg in messages:
                 msg_detail = self.service.users().messages().get(
-                    userId='me', 
+                    userId='me',
                     id=msg['id']
                 ).execute()
                 
@@ -96,11 +98,11 @@ class GmailSpamClassifier:
     
     def run_classification_pipeline(self, max_emails=10):
         """Run the complete email classification pipeline"""
-        print("🚀 Starting Gmail AI Spam Classifier...")
+        print("Starting Gmail AI Spam Classifier...")
         print("=" * 50)
         
         # Step 1: Fetch recent emails
-        print("📧 Fetching recent emails...")
+        print("Fetching recent emails...")
         emails = self.fetch_recent_emails(max_emails)
         print(f"Found {len(emails)} emails to process")
         
@@ -109,22 +111,22 @@ class GmailSpamClassifier:
             return
         
         # Step 2: Classify emails with AI
-        print("\n🤖 Classifying emails with AI...")
+        print("\nClassifying emails with AI...")
         classifications = self.classify_and_store_emails(emails)
         
         # Step 3: Organize emails into labels
-        print("\n📁 Organizing emails into labels...")
+        print("\nOrganizing emails into labels...")
         processed_count = self.process_and_organize_emails(classifications)
         
         # Step 4: Show results
-        print("\n📊 Results:")
+        print("\nResults:")
         stats = self.firebase.get_classification_stats()
         print(f"Total classified: {stats['total_count']}")
         print(f"Spam: {stats['spam_count']}")
         print(f"Not Spam: {stats['not_spam_count']}")
         print(f"Successfully organized: {processed_count} emails")
         
-        print("\n✅ Pipeline completed!")
+        print("\nPipeline completed!")
 
 def main():
     classifier = GmailSpamClassifier()

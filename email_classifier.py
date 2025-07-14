@@ -3,6 +3,8 @@ from langchain.schema import SystemMessage, HumanMessage
 from langchain_core.runnables import RunnableLambda
 from config import OPENAI_API_KEY, AI_MODEL, MAX_PARALLEL_REQUESTS
 import asyncio
+import time
+from openai import RateLimitError
 from typing import List, Dict, Tuple
 
 class EmailClassifier:
@@ -65,21 +67,40 @@ class EmailClassifier:
         
         return RunnableLambda(classify_single_email)
     
-    def classify_emails_parallel(self, emails: List[Dict]) -> List[Dict]:
-        """Classify multiple emails in parallel"""
-        try:
-            # Process emails in batches to avoid rate limits
-            results = []
-            for i in range(0, len(emails), MAX_PARALLEL_REQUESTS):
-                batch = emails[i:i + MAX_PARALLEL_REQUESTS]
-                batch_results = self.classification_chain.batch(batch)
-                results.extend(batch_results)
-            
-            return results
-        except Exception as e:
-            print(f"Error in parallel classification: {e}")
-            # Fallback to sequential processing
-            return [self.classification_chain.invoke(email) for email in emails]
+    async def _classify_email_async(self, email_data):
+        for attempt in range(3):  # Retry up to 3 times
+            try:
+                return self.classification_chain.invoke(email_data)
+            except RateLimitError:
+                wait_time = 2 ** attempt
+                print(f"Rate limit hit, retrying in {wait_time} seconds...")
+                await asyncio.sleep(wait_time)
+            except Exception as e:
+                print(f"Error classifying email {email_data.get('email_id')}: {e}")
+                return {
+                    'email_id': email_data.get('email_id'),
+                    'subject': email_data.get('subject', ''),
+                    'snippet': email_data.get('snippet', ''),
+                    'classification': 'spam',
+                    'confidence': 0.5
+                }
+        return {
+            'email_id': email_data.get('email_id'),
+            'subject': email_data.get('subject', ''),
+            'snippet': email_data.get('snippet', ''),
+            'classification': 'spam',
+            'confidence': 0.5
+        }
+
+    def classify_emails_parallel(self, emails):
+        async def classify_all():
+            sem = asyncio.Semaphore(MAX_PARALLEL_REQUESTS)
+            async def sem_task(email):
+                async with sem:
+                    return await self._classify_email_async(email)
+            tasks = [sem_task(email) for email in emails]
+            return await asyncio.gather(*tasks)
+        return asyncio.run(classify_all())
     
     def classify_single_email(self, subject: str, snippet: str, email_id: str = None) -> Dict:
         """Classify a single email"""

@@ -1,16 +1,16 @@
 from gmail_auth import gmail_authenticate
-from config import SPAM_LABEL_NAME, NOT_SPAM_LABEL_NAME
+from config import SPAM_LABEL_NAME, PROCESSED_LABEL_NAME
 import time
 
 class GmailLabelManager:
     def __init__(self):
         self.service = gmail_authenticate()
         self.spam_label_id = None
-        self.not_spam_label_id = None
+        self.processed_label_id = None
         self._ensure_labels_exist()
     
     def _ensure_labels_exist(self):
-        """Ensure that the required labels exist, create them if they don't"""
+        """Ensure that the required spam label exists, create it if it doesn't"""
         try:
             # Get existing labels
             results = self.service.users().labels().list(userId='me').execute()
@@ -18,11 +18,9 @@ class GmailLabelManager:
             
             # Find or create spam label
             self.spam_label_id = self._find_or_create_label(labels, SPAM_LABEL_NAME)
+            self.processed_label_id = self._find_or_create_label(labels, PROCESSED_LABEL_NAME)
             
-            # Find or create not spam label
-            self.not_spam_label_id = self._find_or_create_label(labels, NOT_SPAM_LABEL_NAME)
-            
-            print(f"Labels ready - Spam: {self.spam_label_id}, Not Spam: {self.not_spam_label_id}")
+            print(f"Label ready - Spam: {self.spam_label_id}")
             
         except Exception as e:
             print(f"Error setting up labels: {e}")
@@ -49,36 +47,32 @@ class GmailLabelManager:
             return None
     
     def move_email_to_label(self, email_id, classification):
-        """Move an email to the appropriate label based on classification"""
+        """Move an email to the spam label if classified as spam. Leave not_spam emails in the inbox."""
         try:
+            label_ids = [self.processed_label_id]
+            remove_label_ids = []
+
             if classification == 'spam':
-                label_id = self.spam_label_id
-            elif classification == 'not_spam':
-                label_id = self.not_spam_label_id
-            else:
-                print(f"Unknown classification: {classification}")
-                return False
-            
-            if not label_id:
-                print("Label ID not found")
-                return False
-            
-            # Add the label to the email
+                label_ids.append(self.spam_label_id)
+                remove_label_ids.append('INBOX')
+
             self.service.users().messages().modify(
                 userId='me',
                 id=email_id,
-                body={'addLabelIds': [label_id]}
+                body={
+                    'addLabelIds': label_ids,
+                    'removeLabelIds': remove_label_ids
+                }
             ).execute()
-            
-            print(f"Moved email {email_id} to {classification} label")
+
+            print(f"Processed email {email_id}: {classification}, labels applied: {label_ids}, removed: {remove_label_ids}")
             return True
-            
         except Exception as e:
             print(f"Error moving email {email_id}: {e}")
             return False
     
     def process_classified_emails(self, classifications):
-        """Process a list of classified emails and move them to appropriate labels"""
+        """Process a list of classified emails and move them to the spam label if needed"""
         success_count = 0
         for classification in classifications:
             email_id = classification.get('email_id')

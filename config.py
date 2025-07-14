@@ -23,8 +23,9 @@ GMAIL_SCOPES = [
 
 # AI Configuration
 AI_MODEL = "gpt-3.5-turbo"
-MAX_PARALLEL_REQUESTS = 5  # Number of emails to classify in parallel
+MAX_PARALLEL_REQUESTS = 10  # Try 10, then 20, etc.
 
 # Email Classification Settings
 SPAM_LABEL_NAME = "AI_Spam"
-NOT_SPAM_LABEL_NAME = "AI_Not_Spam" 
+NOT_SPAM_LABEL_NAME = "AI_Not_Spam"
+PROCESSED_LABEL_NAME = "AI_Processed" 
