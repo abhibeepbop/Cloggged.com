@@ -35,6 +35,8 @@ class EmailClassifier:
                     "- Important notifications (OTPs, passwords, security) = NOT SPAM\n"
                     "- Work-related emails = NOT SPAM\n"
                     "- If unsure, classify as SPAM\n\n"
+                    "- If the email is a reply to a previous email, classify as NOT SPAM\n"
+                    "- If the email contains any finances, like purchases, refunds or bank transfers, classify as NOT SPAM\n"
                     "Respond with exactly one word: 'spam' or 'not_spam'"
                 )),
                 HumanMessage(content=f"Subject: {subject}\n\nSnippet: {snippet}")

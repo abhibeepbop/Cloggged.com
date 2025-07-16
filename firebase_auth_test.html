@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Firebase Auth Test</title>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-auth-compat.js"></script>
+</head>
+<body>
+  <h2>Firebase Auth Test</h2>
+  <div>
+    <input id="email" type="email" placeholder="Email" />
+    <input id="password" type="password" placeholder="Password" />
+    <button onclick="signup()">Sign Up</button>
+    <button onclick="login()">Log In</button>
+  </div>
+  <div>
+    <p id="status"></p>
+    <textarea id="idToken" rows="5" cols="60" readonly placeholder="ID Token will appear here"></textarea>
+  </div>
+  <script>
+    // TODO: Replace with your Firebase config
+    const firebaseConfig = {
+      apiKey: "AIzaSyCmjUIqz-Bo7zDrsqn33UDIRV_macrGfzg",
+      authDomain: "YOUR_PROJECT.firebaseapp.com",
+      projectId: "YOUR_PROJECT_ID"
+    };
+    firebase.initializeApp(firebaseConfig);
+    const auth = firebase.auth();
+
+    function signup() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      auth.createUserWithEmailAndPassword(email, password)
+        .then(userCredential => {
+          document.getElementById('status').innerText = 'Sign up successful!';
+          showIdToken();
+        })
+        .catch(error => {
+          document.getElementById('status').innerText = error.message;
+        });
+    }
+
+    function login() {
+      const email = document.getElementById('email').value;
+      const password = document.getElementById('password').value;
+      auth.signInWithEmailAndPassword(email, password)
+        .then(userCredential => {
+          document.getElementById('status').innerText = 'Login successful!';
+          showIdToken();
+        })
+        .catch(error => {
+          document.getElementById('status').innerText = error.message;
+        });
+    }
+
+    function showIdToken() {
+      const user = auth.currentUser;
+      if (user) {
+        user.getIdToken().then(token => {
+          document.getElementById('idToken').value = token;
+        });
+      }
+    }
+  </script>
+</body>
+</html> 

@@ -5,3 +5,6 @@ langchain
 langchain-openai
 firebase-admin
 python-dotenv
+fastapi
+uvicorn
+python-multipart

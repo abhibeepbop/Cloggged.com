@@ -47,15 +47,18 @@ class GmailLabelManager:
             return None
     
     def move_email_to_label(self, email_id, classification):
-        """Move an email to the spam label if classified as spam. Leave not_spam emails in the inbox."""
         try:
             label_ids = [self.processed_label_id]
             remove_label_ids = []
 
             if classification == 'spam':
+                if not self.spam_label_id:
+                    print("Spam label ID not found")
+                    return False
                 label_ids.append(self.spam_label_id)
                 remove_label_ids.append('INBOX')
 
+            # Always add AI_Processed, and for spam also add AI_Spam and remove from inbox
             self.service.users().messages().modify(
                 userId='me',
                 id=email_id,
