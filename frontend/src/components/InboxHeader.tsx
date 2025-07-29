@@ -2,8 +2,11 @@ import React from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
 import { Search, Menu, Settings, HelpCircle } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function InboxHeader() {
+  const navigate = useNavigate();
+  
   return (
     <header className="border-b bg-white px-4 py-3">
       <div className="flex items-center justify-between">
@@ -15,7 +18,9 @@ export function InboxHeader() {
             <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
               <span className="text-primary-foreground text-sm font-medium">C</span>
             </div>
-            <span className="text-xl text-gray-700">Clogged.ai</span>
+            <span className="text-xl text-gray-700">
+              Clogged.ai
+            </span>
           </div>
         </div>
 
@@ -42,7 +47,11 @@ export function InboxHeader() {
           <Button variant="ghost" size="sm">
             Sign in
           </Button>
-          <Button size="sm" className="bg-primary hover:bg-primary/90">
+          <Button 
+            size="sm" 
+            className="bg-primary hover:bg-primary/90"
+            onClick={() => navigate("/pricing")}
+          >
             Get started
           </Button>
         </div>

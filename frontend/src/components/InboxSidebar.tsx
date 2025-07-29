@@ -2,25 +2,27 @@ import React from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
 import { Inbox, Star, Send, FileText, Trash2, Zap } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function InboxSidebar() {
+  const navigate = useNavigate();
   const sidebarItems = [
-    { icon: Inbox, count: 847, active: true },
+    { icon: Inbox, label: "Inbox", count: 847, active: true },
     { icon: Star, label: "Starred", count: 23 },
     { icon: Send, label: "Sent" },
     { icon: FileText, label: "Drafts", count: 12 },
     { icon: Trash2, label: "Spam", count: 0, highlight: true },
-    { icon: Zap, label: "Important", count: 156 },
+    { icon: Zap, label: "Work", count: 156 },
+    { icon: Zap, label: "Finance", count: 42 },
+    { icon: Zap, label: "Security", count: 8 },
+    { icon: Zap, label: "OTPs", count: 15 },
+    { icon: Zap, label: "Family", count: 23 },
+    { icon: Zap, label: "Urgent", count: 5 },
   ];
 
   return (
     <aside className="w-64 bg-white border-r min-h-screen p-4">
-      <div className="space-y-2 mb-6">
-        <Button className="w-full justify-start bg-primary hover:bg-primary/90" size="lg">
-          <span className="text-lg mr-2">+</span>
-          Start free trial
-        </Button>
-      </div>
+
 
       <nav className="space-y-1">
         {sidebarItems.map((item, index) => (

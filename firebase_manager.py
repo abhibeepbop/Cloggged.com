@@ -37,7 +37,7 @@ class FirebaseManager:
             firebase_admin.initialize_app(cred)
         
     
-    def store_email_classification(self, user_id, email_id, subject, snippet, classification, confidence=None):
+    def store_email_classification(self, user_id, email_id, classification, confidence=None):
         """Store email classification in Firebase under the user's document"""
         if self.db is None:
             self._initialize_firebase()
@@ -45,8 +45,6 @@ class FirebaseManager:
             doc_ref = self.db.collection('identifier').document(user_id).collection('email_classifications').document(email_id)
             doc_ref.set({
                 'email_id': email_id,
-                'subject': subject,
-                'snippet': snippet,
                 'classification': classification,
                 'confidence': confidence,
                 'timestamp': datetime.now(),
@@ -101,6 +99,7 @@ class FirebaseManager:
             return {'spam_count': 0, 'not_spam_count': 0, 'total_count': 0} 
 
     def get_user_classifications(self, user_id):
+        """Get all email classifications for a specific user"""
         if self.db is None:
             self._initialize_firebase()
         try:
@@ -108,4 +107,18 @@ class FirebaseManager:
             return [doc.to_dict() for doc in docs]
         except Exception as e:
             print(f"Error getting user classifications: {e}")
-            return [] 
+            return []
+    
+    def get_email_classification(self, user_id, email_id):
+        """Check if an email has already been classified for a specific user"""
+        if self.db is None:
+            self._initialize_firebase()
+        try:
+            doc_ref = self.db.collection('identifier').document(user_id).collection('email_classifications').document(email_id)
+            doc = doc_ref.get()
+            if doc.exists:
+                return doc.to_dict()
+            return None
+        except Exception as e:
+            print(f"Error checking email classification: {e}")
+            return None 

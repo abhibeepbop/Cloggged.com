@@ -3,8 +3,10 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 import { Checkbox } from "./ui/checkbox";
 import { Star, Archive, Trash2, Clock } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 
 export function InboxContent() {
+  const navigate = useNavigate();
   const emails = [
     {
       sender: "Your CEO",
@@ -13,7 +15,7 @@ export function InboxContent() {
       time: "2:34 PM",
       important: true,
       unread: true,
-      category: "Important"
+      category: "Work"
     },
     {
       sender: "Mom",
@@ -22,7 +24,7 @@ export function InboxContent() {
       time: "1:45 PM",
       important: true,
       unread: true,
-      category: "Personal"
+      category: "Family"
     },
     {
       sender: "GitHub",
@@ -33,29 +35,47 @@ export function InboxContent() {
       category: "Work"
     },
     {
-      sender: "Best Buy",
-      subject: "Your order is ready for pickup",
-      preview: "Your recent order #BB-789456 is ready for pickup at our downtown location...",
+      sender: "Chase Bank",
+      subject: "Your statement is ready",
+      preview: "Your monthly credit card statement is now available for review...",
       time: "11:15 AM",
       unread: false,
-      category: "Shopping"
+      category: "Finance"
     },
     {
-      sender: "LinkedIn Learning",
-      subject: "Complete your JavaScript course",
-      preview: "You're 80% of the way through your JavaScript fundamentals course...",
-      time: "Yesterday",
-      unread: false,
-      category: "Education"
+      sender: "Google",
+      subject: "New sign-in to your account",
+      preview: "We detected a new sign-in to your Google account from a new device...",
+      time: "10:45 AM",
+      unread: true,
+      category: "Security"
+    },
+    {
+      sender: "Amazon",
+      subject: "Your verification code is: 123456",
+      preview: "Use this code to complete your purchase: 123456...",
+      time: "10:30 AM",
+      unread: true,
+      category: "OTPs"
+    },
+    {
+      sender: "Project Manager",
+      subject: "URGENT: Client meeting in 30 minutes",
+      preview: "The client meeting has been moved up to 3 PM today. Please prepare...",
+      time: "9:15 AM",
+      unread: true,
+      category: "Urgent"
     }
   ];
 
   const categoryColors: Record<string, string> = {
-    Important: "bg-red-100 text-red-700",
-    Personal: "bg-blue-100 text-blue-700", 
-    Work: "bg-green-100 text-green-700",
-    Shopping: "bg-purple-100 text-purple-700",
-    Education: "bg-orange-100 text-orange-700"
+    Work: "bg-blue-100 text-blue-700",
+    Finance: "bg-green-100 text-green-700",
+    Security: "bg-red-100 text-red-700",
+    OTPs: "bg-purple-100 text-purple-700",
+    Family: "bg-pink-100 text-pink-700",
+    Urgent: "bg-orange-100 text-orange-700",
+    Spam: "bg-gray-100 text-gray-700"
   };
 
   return (
@@ -98,8 +118,11 @@ export function InboxContent() {
               </p>
               <div className="flex justify-between items-center">
                 <div className="flex space-x-4">
-                  <Button className="bg-primary hover:bg-primary/90 text-base px-6 py-3">
-                    Start free trial
+                  <Button 
+                    className="bg-primary hover:bg-primary/90 text-base px-6 py-3"
+                    onClick={() => navigate("/pricing")}
+                  >
+                    Get started
                   </Button>
                   <Button variant="outline" className="text-base px-6 py-3">
                     Watch demo
@@ -166,8 +189,11 @@ export function InboxContent() {
             Join thousands of users who've reclaimed their time with AI-powered email management.
           </p>
           <div className="flex justify-center space-x-3">
-            <Button className="bg-primary hover:bg-primary/90">
-              Start free trial
+            <Button 
+              className="bg-primary hover:bg-primary/90"
+              onClick={() => navigate("/pricing")}
+            >
+              Get started
             </Button>
             <Button variant="outline">
               Watch demo

@@ -27,17 +27,25 @@ class EmailClassifier:
             
             prompt = [
                 SystemMessage(content=(
-                    "You are an email spam classifier. Analyze the email and respond with ONLY 'spam' or 'not_spam'.\n\n"
+                    "You are an email classifier. Analyze the email and respond with ONLY one of these categories:\n"
+                    "- 'Work' - Professional emails, meetings, deadlines, work-related communications\n"
+                    "- 'Finance' - Banking, invoices, payments, receipts, financial transactions\n"
+                    "- 'Security' - Login alerts, password resets, 2FA codes, account security\n"
+                    "- 'OTPs' - One-time passwords, verification codes, authentication codes\n"
+                    "- 'Family' - Personal emails from family members, close friends\n"
+                    "- 'Urgent' - Time-sensitive communications, immediate action required\n"
+                    "- 'Spam' - Unwanted emails, marketing, promotional content, newsletters\n\n"
                     "Classification rules:\n"
-                    "- Marketing emails, promotional content, newsletters = SPAM\n"
-                    "- Job alerts, recruitment emails = SPAM\n"
-                    "- Personal emails from friends/family = NOT SPAM\n"
-                    "- Important notifications (OTPs, passwords, security) = NOT SPAM\n"
-                    "- Work-related emails = NOT SPAM\n"
-                    "- If unsure, classify as SPAM\n\n"
-                    "- If the email is a reply to a previous email, classify as NOT SPAM\n"
-                    "- If the email contains any finances, like purchases, refunds or bank transfers, classify as NOT SPAM\n"
-                    "Respond with exactly one word: 'spam' or 'not_spam'"
+                    "- If the email is a reply to a previous email, consider the context\n"
+                    "- If unsure between categories, choose the most specific one\n"
+                    "- If truly unclear or unwanted, classify as 'Spam'\n"
+                    "- Emails about money, banking, purchases = 'Finance'\n"
+                    "- Emails about account access, security alerts = 'Security'\n"
+                    "- Emails with verification codes, OTPs = 'OTPs'\n"
+                    "- Emails requiring immediate attention = 'Urgent'\n"
+                    "- Work-related emails, professional communications = 'Work'\n"
+                    "- Personal emails from family/friends = 'Family'\n\n"
+                    "Respond with exactly one word from the categories above."
                 )),
                 HumanMessage(content=f"Subject: {subject}\n\nSnippet: {snippet}")
             ]
@@ -46,9 +54,25 @@ class EmailClassifier:
                 response = self.llm.invoke(prompt)
                 classification = response.content.strip().lower()
                 
-                # Ensure valid classification
-                if classification not in ['spam', 'not_spam']:
-                    classification = 'spam'  # Default to spam if unclear
+                # Map variations to standard categories
+                category_mapping = {
+                    'work': 'Work',
+                    'finance': 'Finance', 
+                    'financial': 'Finance',
+                    'security': 'Security',
+                    'otps': 'OTPs',
+                    'otp': 'OTPs',
+                    'verification': 'OTPs',
+                    'family': 'Family',
+                    'personal': 'Family',
+                    'urgent': 'Urgent',
+                    'spam': 'Spam',
+                    'not_spam': 'Work',  # Legacy support
+                    'notspam': 'Work'    # Legacy support
+                }
+                
+                # Get the mapped category or default to Work
+                classification = category_mapping.get(classification, 'Work')
                 
                 return {
                     'email_id': email_data.get('email_id'),
@@ -63,7 +87,7 @@ class EmailClassifier:
                     'email_id': email_data.get('email_id'),
                     'subject': subject,
                     'snippet': snippet,
-                    'classification': 'spam',  # Default to spam on error
+                    'classification': 'Spam',  # Default to spam on error
                     'confidence': 0.5
                 }
         
@@ -83,14 +107,14 @@ class EmailClassifier:
                     'email_id': email_data.get('email_id'),
                     'subject': email_data.get('subject', ''),
                     'snippet': email_data.get('snippet', ''),
-                    'classification': 'spam',
+                    'classification': 'Spam',
                     'confidence': 0.5
                 }
         return {
             'email_id': email_data.get('email_id'),
             'subject': email_data.get('subject', ''),
             'snippet': email_data.get('snippet', ''),
-            'classification': 'spam',
+            'classification': 'Spam',
             'confidence': 0.5
         }
 
