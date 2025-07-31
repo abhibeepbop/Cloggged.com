@@ -44,13 +44,17 @@ export function InboxHeader() {
           <Button variant="outline" size="sm">
             Watch demo
           </Button>
-          <Button variant="ghost" size="sm">
+          <Button 
+            variant="ghost" 
+            size="sm"
+            onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
+          >
             Sign in
           </Button>
           <Button 
             size="sm" 
             className="bg-primary hover:bg-primary/90"
-            onClick={() => navigate("/pricing")}
+            onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
           >
             Get started
           </Button>

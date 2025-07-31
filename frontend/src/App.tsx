@@ -4,6 +4,9 @@ import { InboxHeader } from "./components/InboxHeader";
 import { InboxSidebar } from "./components/InboxSidebar";
 import { InboxContent } from "./components/InboxContent";
 import { Pricing } from "./components/Pricing";
+import { OAuthCallback } from "./components/OAuthCallback";
+import { PaymentPage } from "./components/PaymentPage";
+import { Dashboard } from "./components/Dashboard";
 
 // Inbox Component
 function Inbox() {
@@ -18,6 +21,15 @@ function Inbox() {
   );
 }
 
+// Pricing Page Component
+function PricingPage() {
+  const handleStartFreeTrial = () => {
+    // Redirect to Google OAuth for sign-in (same as inbox page)
+    window.location.href = 'http://localhost:8000/auth/google';
+  };
+
+  return <Pricing onStartFreeTrial={handleStartFreeTrial} />;
+}
 
 
 export default function App() {
@@ -25,20 +37,13 @@ export default function App() {
     <Router>
       <Routes>
         <Route path="/" element={<Inbox />} />
+        <Route path="/inbox" element={<Inbox />} />
         <Route path="/pricing" element={<PricingPage />} />
+        <Route path="/payment" element={<PaymentPage />} />
+        <Route path="/oauth-callback" element={<OAuthCallback />} />
+        <Route path="/dashboard" element={<Dashboard />} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
   );
-}
-
-// Pricing Page Component
-function PricingPage() {
-  const handleStartFreeTrial = () => {
-    console.log("Starting free trial...");
-    // After payment, redirect to Gmail OAuth flow
-    window.location.href = "http://localhost:8000/gmail/connect";
-  };
-
-  return <Pricing onStartFreeTrial={handleStartFreeTrial} />;
 } 

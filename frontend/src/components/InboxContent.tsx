@@ -120,7 +120,7 @@ export function InboxContent() {
                 <div className="flex space-x-4">
                   <Button 
                     className="bg-primary hover:bg-primary/90 text-base px-6 py-3"
-                    onClick={() => navigate("/pricing")}
+                    onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
                   >
                     Get started
                   </Button>
@@ -191,7 +191,7 @@ export function InboxContent() {
           <div className="flex justify-center space-x-3">
             <Button 
               className="bg-primary hover:bg-primary/90"
-              onClick={() => navigate("/pricing")}
+              onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
             >
               Get started
             </Button>

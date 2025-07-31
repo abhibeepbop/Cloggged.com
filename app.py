@@ -43,7 +43,7 @@ GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/userinfo.email",
     "openid"
 ]
-GOOGLE_REDIRECT_URI = "http://localhost:8000/gmail/oauth2callback"
+GOOGLE_REDIRECT_URI = "http://localhost:3000/oauth-callback"
 
 bearer_scheme = HTTPBearer()
 
@@ -95,12 +95,94 @@ def firestore_test():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
+@app.post("/create-test-user")
+def create_test_user():
+    """Create a test user in Firebase with completed subscription"""
+    try:
+        db = firestore.client()
+        
+        # Create test user document
+        test_user_data = {
+            "uid": "test_user_123",
+            "email": "test@clogged.ai",
+            "name": "Test User",
+            "created_at": datetime.utcnow(),
+            "subscription_status": "active",
+            "subscribed": True,
+            "subscription_id": "sub_test_123",
+            "customer_id": "cus_test_123",
+            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
+            "payment_completed": True,
+            "settings": {
+                "auto_categorize": True,
+                "confidence_threshold": "0.8",
+                "spam_sensitivity": "medium"
+            },
+            "gmail_tokens": None,
+            "last_sync": None
+        }
+        
+        # Add to identifiers collection
+        user_ref = db.collection("identifier").document("test_user_123")
+        user_ref.set(test_user_data)
+        
+        return {"success": True, "message": "Test user created successfully", "user_id": "test_user_123"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/check-user/{email}")
+def check_user(email: str):
+    """Check if a user exists in Firebase and their subscription status"""
+    try:
+        db = firestore.client()
+        users_ref = db.collection("identifier")
+        query = users_ref.where("email", "==", email).limit(1)
+        docs = query.get()
+        
+        if docs:
+            user_doc = docs[0]
+            user_data = user_doc.to_dict()
+            return {
+                "exists": True,
+                "user_id": user_doc.id,
+                "subscription_status": user_data.get("subscription_status"),
+                "payment_completed": user_data.get("payment_completed"),
+                "email": user_data.get("email"),
+                "full_data": user_data
+            }
+        else:
+            return {"exists": False, "message": f"No user found with email {email}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
 @app.get("/protected")
 def protected_route(
     user=Depends(verify_firebase_token),
     credentials: HTTPAuthorizationCredentials = Security(bearer_scheme)
 ):
     return {"message": f"Hello, {user['uid']}!"}
+
+@app.get("/auth/google")
+def google_auth():
+    """Initial Google OAuth for sign-in (no Firebase token required)"""
+    print("Starting Google OAuth for sign-in...")
+    # Start OAuth flow for Gmail
+    flow = Flow.from_client_secrets_file(
+        GOOGLE_OAUTH_CLIENT_SECRET_PATH,
+        scopes=GOOGLE_SCOPES,
+        redirect_uri=GOOGLE_REDIRECT_URI
+    )
+    # Use a temporary state for sign-in
+    auth_url, state = flow.authorization_url(
+        access_type="offline",
+        include_granted_scopes="true",
+        state="signin",  # Use "signin" to distinguish from Gmail connection
+        prompt="consent"
+    )
+    print("AUTH_URL:", auth_url)
+    # Redirect directly to Google OAuth
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=auth_url)
 
 @app.get("/gmail/connect")
 def gmail_connect(user=Depends(verify_firebase_token)):
@@ -127,16 +209,19 @@ def gmail_connect(user=Depends(verify_firebase_token)):
         print("Redirect URI parameter found in URL")
     else:
         print("WARNING: Redirect URI parameter NOT found in URL")
-    return {"auth_url": auth_url}
+    # Redirect directly to Google OAuth
+    from fastapi.responses import RedirectResponse
+    return RedirectResponse(url=auth_url)
 
 @app.get("/gmail/oauth2callback")
 def gmail_oauth2callback(code: str, state: str):
     try:
+        print("=== OAUTH CALLBACK STARTED ===")
         print("OAuth callback received - code:", code[:20] + "..." if code else "None")
         print("OAuth callback received - state:", state)
         print("GOOGLE_REDIRECT_URI:", GOOGLE_REDIRECT_URI)
         
-        # state is the user's UID
+        # state is either "signin" or the user's UID
         flow = Flow.from_client_secrets_file(
             GOOGLE_OAUTH_CLIENT_SECRET_PATH,
             scopes=GOOGLE_SCOPES,
@@ -159,13 +244,80 @@ def gmail_oauth2callback(code: str, state: str):
         }
         print("Tokens prepared successfully")
         
-        # Store tokens in Firestore under users/<uid>/gmail_tokens
-        db = firestore.client()
-        user_ref = db.collection("identifier").document(state)
-        user_ref.update({"gmail_tokens": tokens})
-        print("Tokens stored in Firebase successfully")
-        
-        return {"success": True, "message": "Gmail tokens stored for user.", "user": state}
+        if state == "signin":
+            # This is initial sign-in, check if user already has subscription
+            print("=== INITIAL SIGN-IN FLOW ===")
+            
+            # Get user info from Google
+            from googleapiclient.discovery import build
+            service = build('oauth2', 'v2', credentials=credentials)
+            user_info = service.userinfo().get().execute()
+            user_email = user_info.get('email')
+            user_name = user_info.get('name', 'User')
+            
+            print(f"User signed in: {user_email}")
+            print(f"User name: {user_name}")
+            
+            # Check if user exists in Firebase with subscription
+            db = firestore.client()
+            users_ref = db.collection("identifier")
+            query = users_ref.where("email", "==", user_email).limit(1)
+            docs = query.get()
+            
+            print(f"Checking Firebase for user: {user_email}")
+            print(f"Found {len(list(docs))} documents")
+            
+            if docs:
+                user_doc = docs[0]
+                user_data = user_doc.to_dict()
+                
+                print(f"User data found: {user_data}")
+                print(f"Payment completed: {user_data.get('payment_completed')}")
+                print(f"Subscription status: {user_data.get('subscription_status')}")
+                print(f"Subscribed: {user_data.get('subscribed')}")
+                
+                # Check if user has completed payment
+                payment_completed = user_data.get("payment_completed")
+                subscription_status = user_data.get("subscription_status")
+                subscribed = user_data.get("subscribed")
+                
+                print(f"DEBUG - payment_completed: {payment_completed} (type: {type(payment_completed)})")
+                print(f"DEBUG - subscription_status: {subscription_status} (type: {type(subscription_status)})")
+                print(f"DEBUG - subscribed: {subscribed} (type: {type(subscribed)})")
+                
+                if payment_completed and subscription_status == "active" and subscribed == True:
+                    print(f"User {user_email} has active subscription, redirecting to dashboard")
+                    # Create Firebase custom token for the user
+                    try:
+                        custom_token = auth.create_custom_token(user_doc.id)
+                        # Redirect to dashboard with token
+                        from fastapi.responses import RedirectResponse
+                        return RedirectResponse(url=f"http://localhost:3000/dashboard?token={custom_token}")
+                    except Exception as e:
+                        print(f"Error creating custom token: {e}")
+                        # Fallback: redirect to dashboard without token
+                        return RedirectResponse(url="http://localhost:3000/dashboard")
+                else:
+                    print(f"User {user_email} exists but no active subscription, redirecting to payment")
+                    print(f"Payment completed: {user_data.get('payment_completed')}")
+                    print(f"Subscription status: {user_data.get('subscription_status')}")
+                    print(f"Subscribed: {user_data.get('subscribed')}")
+                    print(f"DEBUG - Condition failed: payment_completed={payment_completed}, subscription_status={subscription_status}, subscribed={subscribed}")
+                    # Store user info temporarily and redirect to payment
+                    return RedirectResponse(url="http://localhost:3000/payment")
+            else:
+                print(f"New user {user_email}, redirecting to payment")
+                # New user, redirect to payment
+                return RedirectResponse(url="http://localhost:3000/payment")
+        else:
+            # This is Gmail connection for existing user
+            # Store tokens in Firestore under users/<uid>/gmail_tokens
+            db = firestore.client()
+            user_ref = db.collection("identifier").document(state)
+            user_ref.update({"gmail_tokens": tokens})
+            print("Tokens stored in Firebase successfully")
+            
+            return {"success": True, "message": "Gmail tokens stored for user.", "user": state}
     except Exception as e:
         print(f"Error in OAuth callback: {e}")
         import traceback
@@ -397,16 +549,19 @@ class PaymentRequest(BaseModel):
     customer_email: str
     customer_name: str = None
 
+class TokenRequest(BaseModel):
+    token: str
+
+class CodeExchangeRequest(BaseModel):
+    code: str
+    state: str
+
 @app.post("/create-payment-intent")
 def create_payment_intent(payment_request: PaymentRequest):
-    """Create a payment intent for the £5.99 subscription"""
+    """Create a setup intent for the £5.99 subscription with 7-day trial"""
     try:
         result = stripe_handler.create_payment_intent(payment_request.customer_email)
-        return {
-            "success": True,
-            "client_secret": result['client_secret'],
-            "payment_intent_id": result['payment_intent_id']
-        }
+        return result  # Return the result directly from stripe_handler
     except Exception as e:
         return {"success": False, "error": str(e)}
 
@@ -441,4 +596,332 @@ def create_subscription(customer_email: str, customer_name: str = None):
             "subscription_id": subscription_id
         }
     except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/verify-token")
+def verify_token(token_request: TokenRequest):
+    """Verify Firebase custom token and return user data"""
+    try:
+        # Exchange custom token for ID token
+        id_token = auth.verify_id_token(token_request.token)
+        user_uid = id_token["uid"]
+        
+        # Get user data from Firestore
+        db = firestore.client()
+        user_ref = db.collection("identifier").document(user_uid)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        
+        user_data = user_doc.to_dict()
+        
+        # Check if user has active subscription
+        if not user_data.get("payment_completed") or user_data.get("subscription_status") != "active" or user_data.get("subscribed") != True:
+            raise HTTPException(status_code=403, detail="No active subscription")
+        
+        return user_data
+    except Exception as e:
+        raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}") 
+
+@app.post("/create-vabhi-user")
+def create_vabhi_user():
+    """Create user for vabhi9920@gmail.com with real subscription data"""
+    try:
+        db = firestore.client()
+        
+        # Create user document for vabhi9920@gmail.com
+        user_data = {
+            "uid": "user_vabhi9920",
+            "email": "vabhi9920@gmail.com",
+            "name": "Vabhi",
+            "created_at": datetime.utcnow(),
+            "subscription_status": "active",
+            "subscribed": True,
+            "subscription_id": "sub_real_payment",  # Replace with actual subscription ID
+            "customer_id": "cus_real_payment",      # Replace with actual customer ID
+            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
+            "payment_completed": True,
+            "settings": {
+                "auto_categorize": True,
+                "confidence_threshold": "0.8",
+                "spam_sensitivity": "medium"
+            },
+            "gmail_tokens": None,
+            "last_sync": None
+        }
+        
+        # Add to identifiers collection
+        user_ref = db.collection("identifier").document("user_vabhi9920")
+        user_ref.set(user_data)
+        
+        return {"success": True, "message": "Vabhi user created successfully", "user_id": "user_vabhi9920"}
+    except Exception as e:
         return {"success": False, "error": str(e)} 
+
+@app.post("/create-user/{email}")
+def create_user(email: str):
+    """Create a user with active subscription for testing"""
+    try:
+        db = firestore.client()
+        
+        # Create user document
+        user_data = {
+            "uid": f"user_{email.replace('@', '_').replace('.', '_')}",
+            "email": email,
+            "name": email.split('@')[0].title(),
+            "created_at": datetime.utcnow(),
+            "subscription_status": "active",
+            "subscribed": True,
+            "subscription_id": f"sub_{email.replace('@', '_').replace('.', '_')}",
+            "customer_id": f"cus_{email.replace('@', '_').replace('.', '_')}",
+            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
+            "payment_completed": True,
+            "settings": {
+                "auto_categorize": True,
+                "confidence_threshold": "0.8",
+                "spam_sensitivity": "medium"
+            },
+            "gmail_tokens": None,
+            "last_sync": None
+        }
+        
+        # Add to identifiers collection
+        user_ref = db.collection("identifier").document(user_data["uid"])
+        user_ref.set(user_data)
+        
+        return {"success": True, "message": f"User {email} created successfully", "user_id": user_data["uid"]}
+    except Exception as e:
+        return {"success": False, "error": str(e)} 
+
+@app.get("/list-firebase")
+def list_firebase():
+    """List all collections and documents in Firebase"""
+    try:
+        db = firestore.client()
+        
+        # Get all collections
+        collections = db.collections()
+        result = {}
+        
+        for collection in collections:
+            collection_name = collection.id
+            print(f"Collection: {collection_name}")
+            
+            # Get all documents in this collection
+            docs = collection.stream()
+            documents = []
+            
+            for doc in docs:
+                doc_data = doc.to_dict()
+                documents.append({
+                    "id": doc.id,
+                    "data": doc_data
+                })
+                print(f"  Document: {doc.id}")
+                print(f"    Data: {doc_data}")
+            
+            result[collection_name] = documents
+        
+        return {
+            "success": True,
+            "collections": result,
+            "total_collections": len(result)
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)} 
+
+@app.post("/update-users-subscribed")
+def update_users_subscribed():
+    """Update all existing users to include the subscribed field"""
+    try:
+        db = firestore.client()
+        
+        # Get all users in the identifier collection
+        users_ref = db.collection("identifier")
+        docs = users_ref.stream()
+        
+        updated_count = 0
+        for doc in docs:
+            user_data = doc.to_dict()
+            
+            # Check if user has active subscription
+            if user_data.get("payment_completed") and user_data.get("subscription_status") == "active":
+                # User is subscribed
+                user_data["subscribed"] = True
+            else:
+                # User is not subscribed
+                user_data["subscribed"] = False
+            
+            # Update the document
+            doc.reference.update({"subscribed": user_data["subscribed"]})
+            updated_count += 1
+            print(f"Updated user {doc.id}: subscribed = {user_data['subscribed']}")
+        
+        return {
+            "success": True, 
+            "message": f"Updated {updated_count} users with subscribed field"
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)} 
+
+@app.post("/update-user-subscription/{email}")
+def update_user_subscription(email: str):
+    """Update a specific user's subscription status to active"""
+    try:
+        db = firestore.client()
+        
+        # Find user by email
+        users_ref = db.collection("identifier")
+        query = users_ref.where("email", "==", email).limit(1)
+        docs = query.get()
+        
+        if not docs:
+            return {"success": False, "error": f"User with email {email} not found"}
+        
+        user_doc = docs[0]
+        user_data = user_doc.to_dict()
+        
+        # Update subscription data
+        update_data = {
+            "subscription_status": "active",
+            "subscribed": True,
+            "payment_completed": True,
+            "subscription_id": f"sub_{user_data.get('uid', 'user')}",
+            "customer_id": f"cus_{user_data.get('uid', 'user')}",
+            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
+            "settings": {
+                "auto_categorize": True,
+                "confidence_threshold": "0.8",
+                "spam_sensitivity": "medium"
+            }
+        }
+        
+        # Update the document
+        user_doc.reference.update(update_data)
+        
+        print(f"Updated user {email}: subscription activated")
+        
+        return {
+            "success": True, 
+            "message": f"User {email} subscription activated",
+            "user_id": user_doc.id
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)} 
+
+@app.post("/fix-user-subscription/{email}")
+def fix_user_subscription(email: str):
+    """Fix a user's subscription data to ensure they can access dashboard"""
+    try:
+        db = firestore.client()
+        
+        # Find user by email
+        users_ref = db.collection("identifier")
+        query = users_ref.where("email", "==", email).limit(1)
+        docs = query.get()
+        
+        if not docs:
+            return {"success": False, "error": f"User with email {email} not found"}
+        
+        user_doc = docs[0]
+        user_data = user_doc.to_dict()
+        
+        # Force update all subscription fields
+        update_data = {
+            "subscription_status": "active",
+            "subscribed": True,
+            "payment_completed": True,
+            "subscription_id": f"sub_{user_data.get('uid', 'user')}",
+            "customer_id": f"cus_{user_data.get('uid', 'user')}",
+            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
+            "settings": {
+                "auto_categorize": True,
+                "confidence_threshold": "0.8",
+                "spam_sensitivity": "medium"
+            }
+        }
+        
+        # Update the document
+        user_doc.reference.update(update_data)
+        
+        print(f"Fixed user {email}: {update_data}")
+        
+        return {
+            "success": True, 
+            "message": f"User {email} subscription fixed",
+            "user_id": user_doc.id,
+            "updated_data": update_data
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)} 
+
+@app.post("/exchange-code")
+def exchange_code(request: CodeExchangeRequest):
+    """Exchange OAuth code for tokens and determine redirect"""
+    try:
+        print("=== CODE EXCHANGE STARTED ===")
+        print(f"Code: {request.code[:20]}...")
+        print(f"State: {request.state}")
+        
+        # Create OAuth flow
+        flow = Flow.from_client_secrets_file(
+            GOOGLE_OAUTH_CLIENT_SECRET_PATH,
+            scopes=GOOGLE_SCOPES,
+            redirect_uri=GOOGLE_REDIRECT_URI
+        )
+        
+        # Exchange code for tokens
+        flow.fetch_token(code=request.code)
+        credentials = flow.credentials
+        
+        # Get user info from Google
+        from googleapiclient.discovery import build
+        service = build('oauth2', 'v2', credentials=credentials)
+        user_info = service.userinfo().get().execute()
+        user_email = user_info.get('email')
+        
+        print(f"User email: {user_email}")
+        
+        # Check Firebase for subscription
+        db = firestore.client()
+        users_ref = db.collection("identifier")
+        query = users_ref.where("email", "==", user_email).limit(1)
+        docs = query.get()
+        
+        if docs:
+            user_doc = docs[0]
+            user_data = user_doc.to_dict()
+            
+            payment_completed = user_data.get("payment_completed")
+            subscription_status = user_data.get("subscription_status")
+            subscribed = user_data.get("subscribed")
+            
+            print(f"User found: payment_completed={payment_completed}, subscription_status={subscription_status}, subscribed={subscribed}")
+            
+            if payment_completed and subscription_status == "active" and subscribed == True:
+                print("User has active subscription, redirecting to dashboard")
+                # Return user data directly instead of custom token
+                redirect_url = "http://localhost:3000/dashboard"
+                print(f"Returning redirect_url: {redirect_url}")
+                return {
+                    "redirect_url": redirect_url,
+                    "user_data": user_data,
+                    "user_id": user_doc.id
+                }
+            else:
+                print("User exists but no active subscription, redirecting to payment")
+                redirect_url = "http://localhost:3000/payment"
+                print(f"Returning redirect_url: {redirect_url}")
+                return {"redirect_url": redirect_url}
+        else:
+            print("New user, redirecting to payment")
+            redirect_url = "http://localhost:3000/payment"
+            print(f"Returning redirect_url: {redirect_url}")
+            return {"redirect_url": redirect_url}
+            
+    except Exception as e:
+        print(f"Error in code exchange: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"redirect_url": "http://localhost:3000/payment"} 

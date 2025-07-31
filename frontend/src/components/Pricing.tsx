@@ -1,8 +1,18 @@
+
+
 interface PricingProps {
   onStartFreeTrial: () => void;
 }
 
 export function Pricing({ onStartFreeTrial }: PricingProps) {
+  const handleStartFreeTrial = () => {
+    // For testing: Skip OAuth and go directly to payment
+    // In production, this would redirect to Google OAuth
+    window.location.href = 'http://localhost:8000/auth/google';
+  };
+
+
+
   return (
     <div className="bg-navy-50 min-h-screen font-['Inter']">
       {/* Header */}
@@ -13,7 +23,10 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
             <button className="bg-white hover:bg-gray-100 text-black border-2 border-black px-4 py-2 rounded-full font-medium transition-colors">
               Home
             </button>
-            <button className="bg-[#EFA6A7] hover:bg-[#e89899] text-black px-4 py-2 rounded-full font-medium transition-colors">
+            <button 
+              onClick={handleStartFreeTrial}
+              className="bg-[#EFA6A7] hover:bg-[#e89899] text-black px-4 py-2 rounded-full font-medium transition-colors"
+            >
               Sign In
             </button>
           </div>
@@ -33,7 +46,7 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
             </div>
             <p className="text-4xl font-small text-navy-900 mb-6 mt-20">Standard</p>
             <button 
-              onClick={onStartFreeTrial}
+              onClick={handleStartFreeTrial}
               className="bg-[#EFA6A7] hover:bg-[#e89899] text-black border border-navy-800 rounded-full px-6 py-2 font-medium text-lg transition-colors w-full"
             >
               Start free trial
@@ -72,12 +85,12 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
 
         {/* Call to Action */}
         <div className="flex flex-col sm:flex-row justify-center gap-6 mt-16">
-          <button 
-            onClick={onStartFreeTrial}
-            className="bg-[#EFA6A7] hover:bg-[#e89899] border-2 border-navy-800 rounded-full px-8 py-3 text-lg font-semibold text-black transition-colors"
-          >
-            Start free trial
-          </button>
+                      <button 
+              onClick={handleStartFreeTrial}
+              className="bg-[#EFA6A7] hover:bg-[#e89899] border-2 border-navy-800 rounded-full px-8 py-3 text-lg font-semibold text-black transition-colors"
+            >
+              Start free trial
+            </button>
 
           <button 
             className="bg-[#79D3E7] hover:bg-[#6bc5db] border-2 border-navy-800 rounded-full px-8 py-3 text-lg font-semibold text-black transition-colors"
@@ -100,6 +113,8 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
           </div>
         </section>
       </main>
+
+
     </div>
   );
 } 
