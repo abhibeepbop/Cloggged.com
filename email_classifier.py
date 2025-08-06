@@ -57,18 +57,27 @@ class EmailClassifier:
                 # Map variations to standard categories
                 category_mapping = {
                     'work': 'Work',
+                    'professional': 'Work',
+                    'business': 'Work',
                     'finance': 'Finance', 
                     'financial': 'Finance',
+                    'banking': 'Finance',
                     'security': 'Security',
+                    'secure': 'Security',
+                    'account': 'Security',
                     'otps': 'OTPs',
                     'otp': 'OTPs',
                     'verification': 'OTPs',
+                    'code': 'OTPs',
                     'family': 'Family',
                     'personal': 'Family',
+                    'friends': 'Family',
                     'urgent': 'Urgent',
+                    'important': 'Urgent',
+                    'priority': 'Urgent',
                     'spam': 'Spam',
-                    'not_spam': 'Work',  # Legacy support
-                    'notspam': 'Work'    # Legacy support
+                    'not_spam': 'Spam',  # Consolidate to Spam
+                    'notspam': 'Spam'    # Consolidate to Spam
                 }
                 
                 # Get the mapped category or default to Work

@@ -1,14 +1,32 @@
 
+import React from "react";
+import { useNavigate } from "react-router-dom";
 
 interface PricingProps {
   onStartFreeTrial: () => void;
 }
 
 export function Pricing({ onStartFreeTrial }: PricingProps) {
+  const navigate = useNavigate();
+  
   const handleStartFreeTrial = () => {
-    // For testing: Skip OAuth and go directly to payment
-    // In production, this would redirect to Google OAuth
-    window.location.href = 'http://localhost:8000/auth/google';
+    // Check if user is already authenticated
+    const isAuthenticated = localStorage.getItem('isAuthenticated');
+    const userData = localStorage.getItem('userData');
+    
+    if (isAuthenticated && userData) {
+      // User is already signed in, go directly to payment
+      console.log('User already authenticated, going to payment');
+      navigate('/payment');
+    } else {
+      // User needs to sign in first
+      console.log('User not authenticated, going to OAuth');
+      window.location.href = 'http://localhost:8000/auth/google';
+    }
+  };
+
+  const handleHomeClick = () => {
+    navigate('/');
   };
 
 
@@ -18,9 +36,17 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
       {/* Header */}
       <header className="border-b border-navy-800 shadow-md bg-navy-900">
         <div className="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
-          <h1 className="text-2xl font-bold tracking-tight text-black">Clogged.ai</h1>
+          <h1 
+            onClick={handleHomeClick}
+            className="text-2xl font-bold tracking-tight text-black cursor-pointer hover:text-gray-700 transition-colors"
+          >
+            Clogged.ai
+          </h1>
           <div className="flex gap-20">
-            <button className="bg-white hover:bg-gray-100 text-black border-2 border-black px-4 py-2 rounded-full font-medium transition-colors">
+            <button 
+              onClick={handleHomeClick}
+              className="bg-white hover:bg-gray-100 text-black border-2 border-black px-4 py-2 rounded-full font-medium transition-colors"
+            >
               Home
             </button>
             <button 

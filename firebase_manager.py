@@ -122,3 +122,47 @@ class FirebaseManager:
         except Exception as e:
             print(f"Error checking email classification: {e}")
             return None 
+
+    def get_user_billing_data(self, user_id):
+        """Get user billing data including trial and billing dates"""
+        if self.db is None:
+            self._initialize_firebase()
+        try:
+            doc_ref = self.db.collection("identifier").document(user_id)
+            doc = doc_ref.get()
+            if doc.exists:
+                user_data = doc.to_dict()
+                
+                # Calculate next billing date from Firebase data
+                next_billing_date = user_data.get('next_billing_date')
+                
+                # If no next_billing_date, calculate it from trial_end or payment_date
+                if not next_billing_date:
+                    if user_data.get('trial_end'):
+                        trial_end = user_data.get('trial_end')
+                        current_time = int(datetime.utcnow().timestamp())
+                        
+                        if trial_end > current_time:
+                            # Trial hasn't ended yet
+                            next_billing_date = trial_end
+                        else:
+                            # Trial has ended, calculate next monthly billing
+                            next_billing_date = trial_end + (30 * 24 * 60 * 60)  # 30 days
+                    elif user_data.get('payment_date'):
+                        # Calculate from payment date
+                        payment_date = user_data.get('payment_date')
+                        next_billing_date = payment_date + (30 * 24 * 60 * 60)  # 30 days
+                
+                return {
+                    'trial_start': user_data.get('trial_start'),
+                    'trial_end': user_data.get('trial_end'),
+                    'payment_date': user_data.get('payment_date'),
+                    'next_billing_date': next_billing_date,
+                    'subscription_status': user_data.get('subscription_status'),
+                    'subscribed': user_data.get('subscribed'),
+                    'payment_completed': user_data.get('payment_completed')
+                }
+            return None
+        except Exception as e:
+            print(f"Error getting user billing data: {e}")
+            return None 

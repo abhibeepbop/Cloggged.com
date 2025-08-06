@@ -2,36 +2,100 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Badge } from "./ui/badge"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts"
 import { TrendingUp, Mail, Filter, Shield, Target } from "lucide-react"
+import { useState, useEffect } from "react"
+
+interface EmailStatsData {
+  total_processed: number
+  spam_count: number
+  accuracy: number
+  top_category: string
+  category_breakdown: Array<{
+    category: string
+    count: number
+    percentage: number
+  }>
+  weekly_data: Array<{
+    day: string
+    date: string
+    processed: number
+    spam: number
+  }>
+  date_range: string
+}
 
 export function EmailStats() {
-  const categoryData = [
-    { category: "Work", count: 1247, percentage: 43.8 },
-    { category: "Finance", count: 423, percentage: 14.9 },
-    { category: "Security", count: 267, percentage: 9.4 },
-    { category: "Shopping", count: 234, percentage: 8.2 },
-    { category: "Social", count: 189, percentage: 6.6 },
-    { category: "Newsletter", count: 297, percentage: 10.4 },
-    { category: "Other", count: 190, percentage: 6.7 }
-  ]
+  const [statsData, setStatsData] = useState<EmailStatsData | null>(null)
+  const [loading, setLoading] = useState(true)
 
-  const weeklyData = [
-    { day: "Mon", processed: 412, spam: 28 },
-    { day: "Tue", processed: 389, spam: 31 },
-    { day: "Wed", processed: 445, spam: 23 },
-    { day: "Thu", processed: 398, spam: 35 },
-    { day: "Fri", processed: 467, spam: 29 },
-    { day: "Sat", processed: 289, spam: 18 },
-    { day: "Sun", processed: 447, spam: 29 }
-  ]
+  useEffect(() => {
+    const fetchEmailStats = async () => {
+      try {
+        // Get user ID from localStorage or context
+        const userData = JSON.parse(localStorage.getItem('userData') || '{}')
+        const userId = userData.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2' // fallback for testing
+        
+        console.log('EmailStats - User ID:', userId)
+        console.log('EmailStats - User Data:', userData)
+        
+        const response = await fetch(`http://localhost:8000/user/${userId}/email-stats`)
+        const result = await response.json()
+        
+        console.log('EmailStats - Response:', result)
+        
+        if (result.success) {
+          setStatsData(result.stats)
+          console.log('EmailStats - Stats set:', result.stats)
+        } else {
+          console.error('EmailStats - Failed to fetch stats:', result.error)
+        }
+      } catch (error) {
+        console.error('EmailStats - Error fetching stats:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchEmailStats()
+  }, [])
 
   const pieColors = [
     "#8B5CF6", "#06B6D4", "#10B981", "#F59E0B", 
     "#EF4444", "#6366F1", "#84CC16"
   ]
 
-  const totalProcessed = 2847
-  const totalSpam = 193
-  const accuracy = 94.7
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="space-y-2">
+          <h2 className="text-3xl font-bold text-gray-900">Email Organization Statistics</h2>
+          <p className="text-gray-600">
+            Detailed analytics of your email processing and categorization
+          </p>
+        </div>
+        <div className="text-center py-8">
+          <p className="text-gray-600">Loading email statistics...</p>
+        </div>
+      </div>
+    )
+  }
+
+  if (!statsData) {
+    return (
+      <div className="space-y-8">
+        <div className="space-y-2">
+          <h2 className="text-3xl font-bold text-gray-900">Email Organization Statistics</h2>
+          <p className="text-gray-600">
+            Detailed analytics of your email processing and categorization
+          </p>
+        </div>
+        <div className="text-center py-8">
+          <p className="text-gray-600">No email statistics available</p>
+        </div>
+      </div>
+    )
+  }
+
+  const { total_processed, spam_count, accuracy, top_category, category_breakdown, weekly_data, date_range } = statsData
 
   return (
     <div className="space-y-8">
@@ -50,9 +114,9 @@ export function EmailStats() {
             <Mail className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalProcessed.toLocaleString()}</div>
+            <div className="text-2xl font-bold">{total_processed.toLocaleString()}</div>
             <p className="text-xs text-muted-foreground">
-              +12% from last month
+              {total_processed > 0 ? "Emails processed this month" : "No emails processed this month"}
             </p>
           </CardContent>
         </Card>
@@ -63,9 +127,9 @@ export function EmailStats() {
             <Shield className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{totalSpam}</div>
+            <div className="text-2xl font-bold">{spam_count}</div>
             <p className="text-xs text-muted-foreground">
-              {((totalSpam / totalProcessed) * 100).toFixed(1)}% of total emails
+              {total_processed > 0 ? `${((spam_count / total_processed) * 100).toFixed(1)}% of monthly emails` : "No emails processed"}
             </p>
           </CardContent>
         </Card>
@@ -89,9 +153,9 @@ export function EmailStats() {
             <Filter className="h-4 w-4 text-muted-foreground" />
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">Work</div>
+            <div className="text-2xl font-bold">{top_category}</div>
             <p className="text-xs text-muted-foreground">
-              43.8% of all emails
+              {category_breakdown.length > 0 ? `${category_breakdown[0]?.percentage}% of all emails` : "No categories yet"}
             </p>
           </CardContent>
         </Card>
@@ -103,30 +167,36 @@ export function EmailStats() {
           <CardHeader>
             <CardTitle>Email Categories</CardTitle>
             <CardDescription>
-              Distribution of emails by category this month
+              Distribution of emails by category this month ({date_range})
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-80">
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={categoryData}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ category, percentage }) => `${category} (${percentage}%)`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="count"
-                  >
-                    {categoryData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
+              {category_breakdown.length > 0 ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={category_breakdown}
+                      cx="50%"
+                      cy="50%"
+                      labelLine={false}
+                      label={({ category, percentage }) => `${category} (${percentage}%)`}
+                      outerRadius={80}
+                      fill="#8884d8"
+                      dataKey="count"
+                    >
+                      {category_breakdown.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={pieColors[index % pieColors.length]} />
+                      ))}
+                    </Pie>
+                    <Tooltip />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full">
+                  <p className="text-gray-500">No email categories available this month</p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
@@ -136,19 +206,25 @@ export function EmailStats() {
           <CardHeader>
             <CardTitle>Weekly Email Processing</CardTitle>
             <CardDescription>
-              Daily email processing and spam detection over the past week
+              Daily email processing and spam detection for the last 7 days
             </CardDescription>
           </CardHeader>
           <CardContent>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weeklyData}>
+                <BarChart data={weekly_data}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="day" />
                   <YAxis />
-                  <Tooltip />
+                  <Tooltip 
+                    formatter={(value, name) => [value, name === 'processed' ? 'Processed' : 'Spam']}
+                    labelFormatter={(label) => {
+                      const dayData = weekly_data.find(d => d.day === label)
+                      return dayData ? `${label} (${dayData.date})` : label
+                    }}
+                  />
                   <Bar dataKey="processed" fill="#8B5CF6" name="Processed" />
-                  <Bar dataKey="spam" fill="#EF4444" name="Spam Filtered" />
+                  <Bar dataKey="spam" fill="#EF4444" name="Spam" />
                 </BarChart>
               </ResponsiveContainer>
             </div>
@@ -165,28 +241,34 @@ export function EmailStats() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          <div className="space-y-4">
-            {categoryData.map((category, index) => (
-              <div key={category.category} className="flex items-center justify-between p-3 border rounded-lg">
-                <div className="flex items-center gap-3">
-                  <div 
-                    className="w-4 h-4 rounded-full"
-                    style={{ backgroundColor: pieColors[index] }}
-                  />
-                  <div>
-                    <div className="font-medium">{category.category}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {category.percentage}% of total
+          {category_breakdown.length > 0 ? (
+            <div className="space-y-4">
+              {category_breakdown.map((category, index) => (
+                <div key={category.category} className="flex items-center justify-between p-3 border rounded-lg">
+                  <div className="flex items-center gap-3">
+                    <div 
+                      className="w-4 h-4 rounded-full"
+                      style={{ backgroundColor: pieColors[index] }}
+                    />
+                    <div>
+                      <div className="font-medium">{category.category}</div>
+                      <div className="text-sm text-muted-foreground">
+                        {category.percentage}% of total
+                      </div>
                     </div>
                   </div>
+                  <div className="text-right">
+                    <div className="font-medium">{category.count.toLocaleString()}</div>
+                    <div className="text-sm text-muted-foreground">emails</div>
+                  </div>
                 </div>
-                <div className="text-right">
-                  <div className="font-medium">{category.count.toLocaleString()}</div>
-                  <div className="text-sm text-muted-foreground">emails</div>
-                </div>
-              </div>
-            ))}
-          </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-center py-8">
+              <p className="text-gray-500">No email categories available</p>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

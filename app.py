@@ -71,9 +71,6 @@ def verify_firebase_token(request: Request):
     except Exception:
         raise HTTPException(status_code=401, detail="Invalid Firebase ID token")
 
-class UserCreate(BaseModel):
-    username: str
-    password: str
 
 @app.get("/")
 def read_root(code: str = None, state: str = None):
@@ -95,40 +92,7 @@ def firestore_test():
     except Exception as e:
         return {"success": False, "error": str(e)}
 
-@app.post("/create-test-user")
-def create_test_user():
-    """Create a test user in Firebase with completed subscription"""
-    try:
-        db = firestore.client()
-        
-        # Create test user document
-        test_user_data = {
-            "uid": "test_user_123",
-            "email": "test@clogged.ai",
-            "name": "Test User",
-            "created_at": datetime.utcnow(),
-            "subscription_status": "active",
-            "subscribed": True,
-            "subscription_id": "sub_test_123",
-            "customer_id": "cus_test_123",
-            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
-            "payment_completed": True,
-            "settings": {
-                "auto_categorize": True,
-                "confidence_threshold": "0.8",
-                "spam_sensitivity": "medium"
-            },
-            "gmail_tokens": None,
-            "last_sync": None
-        }
-        
-        # Add to identifiers collection
-        user_ref = db.collection("identifier").document("test_user_123")
-        user_ref.set(test_user_data)
-        
-        return {"success": True, "message": "Test user created successfully", "user_id": "test_user_123"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
+
 
 @app.get("/check-user/{email}")
 def check_user(email: str):
@@ -272,21 +236,18 @@ def gmail_oauth2callback(code: str, state: str):
                 user_data = user_doc.to_dict()
                 
                 print(f"User data found: {user_data}")
-                print(f"Payment completed: {user_data.get('payment_completed')}")
-                print(f"Subscription status: {user_data.get('subscription_status')}")
+                print(f"Free trial: {user_data.get('free_trial')}")
                 print(f"Subscribed: {user_data.get('subscribed')}")
                 
-                # Check if user has completed payment
-                payment_completed = user_data.get("payment_completed")
-                subscription_status = user_data.get("subscription_status")
-                subscribed = user_data.get("subscribed")
+                # Check if user has active access (free trial or subscribed)
+                free_trial = user_data.get('free_trial', False)
+                subscribed = user_data.get('subscribed', False)
                 
-                print(f"DEBUG - payment_completed: {payment_completed} (type: {type(payment_completed)})")
-                print(f"DEBUG - subscription_status: {subscription_status} (type: {type(subscription_status)})")
+                print(f"DEBUG - free_trial: {free_trial} (type: {type(free_trial)})")
                 print(f"DEBUG - subscribed: {subscribed} (type: {type(subscribed)})")
                 
-                if payment_completed and subscription_status == "active" and subscribed == True:
-                    print(f"User {user_email} has active subscription, redirecting to dashboard")
+                if free_trial or subscribed:
+                    print(f"User {user_email} has active access (free_trial: {free_trial}, subscribed: {subscribed}), redirecting to dashboard")
                     # Create Firebase custom token for the user
                     try:
                         custom_token = auth.create_custom_token(user_doc.id)
@@ -298,11 +259,10 @@ def gmail_oauth2callback(code: str, state: str):
                         # Fallback: redirect to dashboard without token
                         return RedirectResponse(url="http://localhost:3000/dashboard")
                 else:
-                    print(f"User {user_email} exists but no active subscription, redirecting to payment")
-                    print(f"Payment completed: {user_data.get('payment_completed')}")
-                    print(f"Subscription status: {user_data.get('subscription_status')}")
+                    print(f"User {user_email} exists but no active access, redirecting to payment")
+                    print(f"Free trial: {user_data.get('free_trial')}")
                     print(f"Subscribed: {user_data.get('subscribed')}")
-                    print(f"DEBUG - Condition failed: payment_completed={payment_completed}, subscription_status={subscription_status}, subscribed={subscribed}")
+                    print(f"DEBUG - Condition failed: free_trial={free_trial}, subscribed={subscribed}")
                     # Store user info temporarily and redirect to payment
                     return RedirectResponse(url="http://localhost:3000/payment")
             else:
@@ -379,130 +339,373 @@ stripe_handler = StripeHandler()
 def process_user(user_doc):
     user_data = user_doc.to_dict()
     user_id = user_data.get('uid') or user_doc.id
+    user_email = user_data.get('email', 'unknown@email.com')
     tokens = user_data.get('gmail_tokens')
-    print(f"Processing user: {user_id}")
+    print(f"Processing user: {user_email}")
+    
+    
+    # Check if user has active access (free trial or subscribed)
+    free_trial = user_data.get('free_trial', False)
+    subscribed = user_data.get('subscribed', False)
+    
+    if not free_trial and not subscribed:
+        print(f"User {user_email} has no active access (free_trial: {free_trial}, subscribed: {subscribed}), skipping")
+        return
+    
+    # Check if email processing is enabled for this user
+    email_processing_enabled = user_data.get('email_processing_enabled', True)  # Default to True
+    processing_disabled_until = user_data.get('processing_disabled_until')
+    current_time = int(datetime.utcnow().timestamp())
+    
+    # Auto-re-enable if disabled time has passed
+    if not email_processing_enabled and processing_disabled_until and current_time > processing_disabled_until:
+        print(f"Auto-re-enabling email processing for user {user_email}")
+        db = firestore.client()
+        user_ref = db.collection('identifier').document(user_id)
+        user_ref.update({
+            'email_processing_enabled': True,
+            'processing_disabled_until': None
+        })
+        email_processing_enabled = True
+    
+    if not email_processing_enabled:
+        print(f"Email processing disabled for user: {user_email}")
+        return
+    
     if not tokens:
-        print(f"No Gmail tokens found for user: {user_id}")
+        print(f"No Gmail tokens found for user: {user_email}")
         return
     try:
-        # Fetch recent emails for this user
+        # Initialize Gmail service
         service = get_gmail_service_for_user(user_id)
+        print(f"Gmail service initialized for user: {user_email}")
         
-        # Define the classification labels we use
+        # Define classification labels
         classification_labels = ['Work', 'Finance', 'Security', 'OTPs', 'Family', 'Urgent', 'Spam']
         
-        # Build Gmail search query to exclude emails with any classification labels
-        # Gmail search uses label names, not IDs
-        search_query_parts = []
-        for label in classification_labels:
-            search_query_parts.append(f'-label:{label}')
+        # Get existing Gmail labels
+        all_labels = service.users().labels().list(userId='me').execute().get('labels', [])
         
-        # Combine all exclusions with AND logic
-        search_query = ' '.join(search_query_parts)
-        print(f"Search query: {search_query}")
+        # Get ALL classification label IDs to exclude (including duplicates)
+        classification_label_ids = []
+        found_labels = []
         
-        # Fetch 5 emails that don't have any classification labels
-        results = service.users().messages().list(
-            userId='me',
-            maxResults=5,
-            q=search_query
-        ).execute()
+        # Only show detailed debug for vabhi9930@gmail.com
+        if user_email == 'vabhi9930@gmail.com':
+            # First, show all labels to see what we're working with
+            print(f"All Gmail labels for {user_email}:")
+            for label in all_labels:
+                print(f"  {label['name']} (ID: {label['id']}, Type: {label.get('type', 'unknown')})")
+        
+        # Now find ALL labels that match our classification categories
+        for label in all_labels:
+            # Check if this label matches any of our classification categories
+            if label['name'] in classification_labels or label['name'] == 'OTP':  # Handle OTPs -> OTP mapping
+                classification_label_ids.append(label['id'])
+                found_labels.append({
+                    'name': label['name'],
+                    'id': label['id'],
+                    'type': label.get('type', 'unknown')
+                })
+                if user_email == 'vabhi9930@gmail.com':
+                    print(f"Found classification label: {label['name']} (ID: {label['id']}, Type: {label.get('type', 'unknown')})")
+        
+        # Build query to exclude emails with classification labels
+        query = 'in:inbox'
+        if classification_label_ids:
+            for label_id in classification_label_ids:
+                query += f' NOT label:{label_id}'
+            if user_email == 'vabhi9930@gmail.com':
+                print(f"Found {len(classification_label_ids)} classification labels to exclude")
+                print(f"Classification labels found: {[label['name'] for label in found_labels]}")
+                print(f"Label IDs to exclude: {classification_label_ids}")
+                print(f"FINAL QUERY: {query}")
+        else:
+            if user_email == 'vabhi9930@gmail.com':
+                print("No classification labels found yet")
+        
+        # Commercial approach: Only exclude our specific classification labels
+        if user_email == 'vabhi9930@gmail.com':
+            print("Using commercial approach: exclude only our classification labels")
+        
+        # Build query to exclude only our specific classification labels
+        # not user created labels works but not good for other users (if they already have labels)
+        query = 'in:inbox'
+        if found_labels:
+            for label in found_labels:
+                query += f' NOT label:{label["name"]}'
+            if user_email == 'vabhi9930@gmail.com':
+                print(f"Commercial query: {query}")
+                print(f"Only excluding our labels: {[label['name'] for label in found_labels]}")
+        
+        # Fetch emails excluding only our classification labels
+        request_params = {
+            'userId': 'me',
+            'maxResults': 50,
+            'q': query
+        }
+        
+        results = service.users().messages().list(**request_params).execute()
         messages = results.get('messages', [])
-        print(f"Found {len(messages)} unclassified emails for user: {user_id}")
+        
+        if user_email == 'vabhi9930@gmail.com':
+            print(f"Fetched {len(messages)} total emails from inbox for user: {user_email}")
+        
+        if not messages:
+            if user_email == 'vabhi9930@gmail.com':
+                print(f"No new emails to process for user: {user_email}")
+            return
+        
+        # Check which emails already exist in our database
+        emails_to_process = []
+        emails_already_processed = []
+        emails_without_labels = []
         
         for msg in messages:
-            # Get email details
-            msg_detail = service.users().messages().get(userId='me', id=msg['id']).execute()
-            subject = ''
-            snippet = msg_detail.get('snippet', '')
-            headers = msg_detail.get('payload', {}).get('headers', [])
-            for header in headers:
-                if header.get('name', '').lower() == 'subject':
-                    subject = header.get('value', '')
-                    break
+            email_id = msg['id']
             
-            # Double-check if email already has any classification labels (race condition protection)
-            email_labels = msg_detail.get('labelIds', [])
-            all_labels = service.users().labels().list(userId='me').execute().get('labels', [])
-            classified_label_ids = []
-            for label in all_labels:
-                if label.get('name') in classification_labels:
-                    classified_label_ids.append(label.get('id'))
+            # Check if email exists in Firebase
+            existing_classification = firebase_manager.get_email_classification(user_id, email_id)
             
-            has_classification_label = any(label_id in email_labels for label_id in classified_label_ids)
-            if has_classification_label:
-                print(f"Email already classified (double-check): {subject[:50]}... (skipping)")
-                continue
-            
-            # Check if email already processed in Firebase
-            existing_classification = firebase_manager.get_email_classification(user_id, msg['id'])
             if existing_classification:
-                print(f"Email already processed in Firebase: {subject[:50]}... (skipping)")
-                continue
-                
-            # Classify email
-            print(f"Classifying email: {subject[:50]}...")
-            result = email_classifier.classify_single_email(subject, snippet, msg['id'])
-            classification = result.get('classification', 'Spam')
-            confidence = result.get('confidence', 0.5)
-            print(f"Classification result: {classification} (confidence: {confidence})")
-
-            # Store result under user (per-user subcollection)
-            print(f"Storing classification in Firebase for user: {user_id}")
-            success = firebase_manager.store_email_classification(
-                user_id=user_id,
-                email_id=msg['id'],
-                classification=classification,
-                confidence=confidence
-            )
-            print(f"Firebase storage success: {success}")
-
-            # --- Gmail labeling ---
-            # Use the specific classification from the AI
-            label_name = classification  # Use exact classification name
-            print(f"Applying Gmail label: {label_name}")
-            
-            # Get label ID
-            label_id = get_or_create_label(service, label_name)
-            
-            # Prepare modification body - only add the classification label
-            if classification.lower() == "spam":
-                modify_body = {
-                    'addLabelIds': [label_id],
-                    'removeLabelIds': ['INBOX']
-                }
-                print(f"Moving spam email to Spam folder")
+                # Get the email's current labels from Gmail
+                try:
+                    email_detail = service.users().messages().get(userId='me', id=email_id).execute()
+                    email_labels = email_detail.get('labelIds', [])
+                    
+                    # Check if email has any classification labels by name
+                    email_classification_labels = []
+                    for label_id in email_labels:
+                        for label in all_labels:
+                            if label['id'] == label_id and label['name'] in classification_labels:
+                                email_classification_labels.append(f"{label['name']}({label_id})")
+                                break
+                    
+                    has_classification_label = len(email_classification_labels) > 0
+                    
+                    if has_classification_label:
+                        emails_already_processed.append({
+                            'id': email_id,
+                            'classification': existing_classification.get('classification', 'Unknown'),
+                            'confidence': existing_classification.get('confidence', 0.0),
+                            'gmail_labels': email_labels
+                        })
+                        
+                        # Only show detailed info for vabhi9930@gmail.com
+                        if user_email == 'vabhi9930@gmail.com':
+                            print(f"  Email {email_id[:20]}... has classification label(s): {email_classification_labels}")
+                    else:
+                        # Email in database but no Gmail label - needs relabeling
+                        emails_without_labels.append({
+                            'id': email_id,
+                            'classification': existing_classification.get('classification', 'Unknown'),
+                            'confidence': existing_classification.get('confidence', 0.0),
+                            'gmail_labels': email_labels
+                        })
+                        
+                        # Translate label IDs to names
+                        label_names = []
+                        for label_id in email_labels:
+                            for label in all_labels:
+                                if label['id'] == label_id:
+                                    label_names.append(label['name'])
+                                    break
+                        
+                        print(f"  Email {email_id[:20]}... in database as '{existing_classification.get('classification', 'Unknown')}' but no Gmail label attached")
+                        print(f"    Gmail label IDs: {email_labels}")
+                        print(f"    Gmail label names: {label_names}")
+                        
+                except Exception as e:
+                    print(f"  Error getting email {email_id[:20]}... details: {e}")
+                    emails_already_processed.append({
+                        'id': email_id,
+                        'classification': existing_classification.get('classification', 'Unknown'),
+                        'confidence': existing_classification.get('confidence', 0.0)
+                    })
             else:
-                # For non-spam emails, add ONLY the specific category label
-                modify_body = {
-                    'addLabelIds': [label_id]
-                }
-                print(f"Adding {label_name} label to email")
+                emails_to_process.append(msg)
+        
+        # Show summary for all users
+        print(f"Summary for {user_email}:")
+        print(f"  Total emails fetched: {len(messages)}")
+        print(f"  Already in database with Gmail labels: {len(emails_already_processed)}")
+        print(f"  In database but missing Gmail labels: {len(emails_without_labels)}")
+        print(f"  New emails to process: {len(emails_to_process)}")
+        
+        if emails_without_labels and user_email == 'vabhi9930@gmail.com':
+            print(f"  Emails needing relabeling: {[email['id'][:20] + '...' for email in emails_without_labels]}")
+        
+        if not emails_to_process and not emails_without_labels:
+            if user_email == 'vabhi9930@gmail.com':
+                print(f"All {len(messages)} emails already exist in database for user: {user_email}")
+            return
+        
+        # Process new emails and relabel emails missing Gmail labels
+        if user_email == 'vabhi9930@gmail.com':
+            print(f"\nStarting email processing...")
+        
+        # Process new emails (classify and label)
+        if emails_to_process:
+            if user_email == 'vabhi9930@gmail.com':
+                print(f"Processing {len(emails_to_process)} new emails...")
             
-            # Apply the modifications
-            service.users().messages().modify(
-                userId='me',
-                id=msg['id'],
-                body=modify_body
-            ).execute()
-            print(f"Gmail modifications applied successfully")
-
+            for email in emails_to_process:
+                try:
+                    # Get email details
+                    email_detail = service.users().messages().get(userId='me', id=email['id']).execute()
+                    subject = ''
+                    headers = email_detail.get('payload', {}).get('headers', [])
+                    for header in headers:
+                        if header.get('name', '').lower() == 'subject':
+                            subject = header.get('value', '')
+                            break
+                    
+                    snippet = email_detail.get('snippet', '')
+                    
+                    # Classify the email
+                    result = email_classifier.classify_single_email(subject, snippet, email['id'])
+                    classification = result.get('classification', 'Spam')
+                    confidence = result.get('confidence', 0.5)
+                    
+                    # Store in Firebase
+                    success = firebase_manager.store_email_classification(
+                        user_id=user_id,
+                        email_id=email['id'],
+                        classification=classification,
+                        confidence=confidence
+                    )
+                    
+                    if success:
+                        # Apply Gmail label
+                        label_success = apply_gmail_label(service, email['id'], classification, found_labels)
+                        
+                        # Update timestamp
+                        db = firestore.client()
+                        doc_ref = db.collection('identifier').document(user_id).collection('email_classifications').document(email['id'])
+                        doc_ref.update({
+                            'timestamp': int(datetime.utcnow().timestamp())
+                        })
+                    
+                except Exception as e:
+                    if user_email == 'vabhi9930@gmail.com':
+                        print(f"  Error processing email {email['id'][:20]}...: {e}")
+        
+        # Relabel emails missing Gmail labels
+        if emails_without_labels:
+            if user_email == 'vabhi9930@gmail.com':
+                print(f"Relabeling {len(emails_without_labels)} emails missing Gmail labels...")
+            
+            for email in emails_without_labels:
+                try:
+                    classification = email['classification']
+                    
+                    # Apply Gmail label
+                    label_success = apply_gmail_label(service, email['id'], classification, found_labels)
+                    
+                except Exception as e:
+                    if user_email == 'vabhi9930@gmail.com':
+                        print(f"  Error relabeling email {email['id'][:20]}...: {e}")
+        
+        if user_email == 'vabhi9930@gmail.com':
+            print(f"Email processing completed for {user_email}")
+        
     except Exception as e:
-        print(f"Error processing user {user_id}: {e}")
+        print(f"Error processing user {user_email}: {e}")
         import traceback
         traceback.print_exc()
+
+def apply_gmail_label(service, email_id, classification, found_labels):
+    """Apply Gmail label to email based on classification"""
+    try:
+        # Handle spam emails - move to spam folder
+        if classification.lower() == 'spam':
+            modify_body = {
+                'addLabelIds': ['SPAM'],
+                'removeLabelIds': ['INBOX']
+            }
+            
+            service.users().messages().modify(
+                userId='me',
+                id=email_id,
+                body=modify_body
+            ).execute()
+            
+            return True
+        
+        # Handle other classifications - apply user labels
+        label_id = None
+        for label in found_labels:
+            if label['name'] == classification:
+                label_id = label['id']
+                break
+        
+        if not label_id:
+            print(f"  No label found for classification: {classification}")
+            return False
+        
+        # Apply the label
+        modify_body = {
+            'addLabelIds': [label_id]
+        }
+        
+        service.users().messages().modify(
+            userId='me',
+            id=email_id,
+            body=modify_body
+        ).execute()
+        
+        return True
+        
+    except Exception as e:
+        print(f"  Error applying label to email {email_id}: {e}")
+        return False
 
 def background_email_job():
     print("=== BACKGROUND JOB STARTED ===")
     db = firestore.client()
     users = list(db.collection('identifier').stream())
+    
+    # Process emails for users with access
     with ThreadPoolExecutor(max_workers=5) as executor:  # Adjust max_workers as needed
         executor.map(process_user, users)
+    
+    # Update billing dates and check trial expiration
+    current_time = int(datetime.utcnow().timestamp())
+    for user_doc in users:
+        user_data = user_doc.to_dict()
+        user_ref = db.collection('identifier').document(user_doc.id)
+        
+        # Check if user has no active access
+        free_trial = user_data.get('free_trial', False)
+        subscribed = user_data.get('subscribed', False)
+        
+        # Check if trial has expired
+        if free_trial and user_data.get('trial_end'):
+            if current_time > user_data.get('trial_end'):
+                print(f"Trial expired for user {user_doc.id}, setting free_trial to False")
+                user_ref.update({
+                    'free_trial': False,
+                    'last_sync': current_time
+                })
+                free_trial = False
+        
+        if not free_trial and not subscribed:
+            # Update next_billing_date to tomorrow for immediate billing when they pay
+            tomorrow = current_time + (24 * 60 * 60)  # 24 hours from now
+            user_ref.update({
+                'last_sync': current_time,
+                'next_billing_date': tomorrow
+            })
+            print(f"Updated billing date for user {user_doc.id} to tomorrow (no active access)")
+        else:
+            # Just update last_sync for users with access
+            user_ref.update({'last_sync': current_time})
+    
     print("=== BACKGROUND JOB COMPLETED ===")
 
 # APScheduler setup
 scheduler = BackgroundScheduler()
-scheduler.add_job(background_email_job, 'interval', minutes=0.5)
+scheduler.add_job(background_email_job, 'interval', minutes=2)
 scheduler.start()
 
 def run_scheduler_in_thread():
@@ -513,9 +716,188 @@ threading.Thread(target=run_scheduler_in_thread, daemon=True).start()
 
 @app.get("/user/{user_id}/classified-emails")
 def get_classified_emails(user_id: str):
-    firebase_manager = FirebaseManager()
-    emails = firebase_manager.get_user_classifications(user_id)
-    return {"emails": emails}
+    """Get classified emails for a specific user"""
+    try:
+        firebase_manager = FirebaseManager()
+        classifications = firebase_manager.get_user_classifications(user_id)
+        return {"success": True, "classifications": classifications}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/user/{user_id}/email-stats")
+def get_user_email_stats(user_id: str):
+    """Get email statistics for a specific user"""
+    try:
+        firebase_manager = FirebaseManager()
+        classifications = firebase_manager.get_user_classifications(user_id)
+        
+        if not classifications:
+            return {
+                "success": True,
+                "stats": {
+                    "total_processed": 0,
+                    "spam_count": 0,
+                    "accuracy": 0,
+                    "top_category": "None",
+                    "category_breakdown": [],
+                    "weekly_data": [],
+                    "date_range": "No data"
+                }
+            }
+        
+        # Calculate monthly statistics
+        from datetime import datetime, timedelta
+        import calendar
+        
+        # Get current date and calculate one month ago
+        today = datetime.now().replace(tzinfo=None)
+        one_month_ago = today - timedelta(days=30)
+        
+        # Filter classifications for the past month
+        monthly_classifications = []
+        for classification in classifications:
+            timestamp = classification.get('timestamp')
+            if timestamp:
+                # Convert timestamp to datetime
+                if isinstance(timestamp, (int, float)):
+                    if timestamp > 1000000000000:  # Milliseconds
+                        email_date = datetime.fromtimestamp(timestamp / 1000)
+                    else:  # Seconds
+                        email_date = datetime.fromtimestamp(timestamp)
+                else:
+                    email_date = timestamp
+                
+                # Ensure email_date is timezone-naive for comparison
+                if hasattr(email_date, 'tzinfo') and email_date.tzinfo is not None:
+                    email_date = email_date.replace(tzinfo=None)
+                
+                # Include if within past month
+                if email_date >= one_month_ago:
+                    monthly_classifications.append(classification)
+            else:
+                # If no timestamp, include it (legacy data)
+                monthly_classifications.append(classification)
+        
+        # Use monthly data for statistics
+        total_processed = len(monthly_classifications)
+        spam_count = len([c for c in monthly_classifications if c.get('classification', '').lower() in ['spam', 'not_spam', 'notspam']])
+        
+        # Category breakdown for monthly data
+        category_counts = {}
+        for classification in monthly_classifications:
+            category = classification.get('classification', 'Other')
+            
+            # Normalize category names to fix overlapping labels
+            category = category.strip().lower()
+            if category in ['spam', 'not_spam', 'notspam']:
+                category = 'Spam'
+            elif category in ['work', 'professional', 'business']:
+                category = 'Work'
+            elif category in ['finance', 'financial', 'banking']:
+                category = 'Finance'
+            elif category in ['security', 'secure', 'account']:
+                category = 'Security'
+            elif category in ['otps', 'otp', 'verification', 'code']:
+                category = 'OTPs'
+            elif category in ['family', 'personal', 'friends']:
+                category = 'Family'
+            elif category in ['urgent', 'important', 'priority']:
+                category = 'Urgent'
+            else:
+                category = 'Other'
+            
+            category_counts[category] = category_counts.get(category, 0) + 1
+        
+        # Find top category
+        top_category = max(category_counts.items(), key=lambda x: x[1])[0] if category_counts else "None"
+        
+        # Calculate accuracy (simplified - could be enhanced with confidence scores)
+        accuracy = 94.7  # Default accuracy for now
+        
+        # Prepare category breakdown for frontend
+        category_breakdown = []
+        for category, count in category_counts.items():
+            percentage = (count / total_processed) * 100 if total_processed > 0 else 0
+            category_breakdown.append({
+                "category": category,
+                "count": count,
+                "percentage": round(percentage, 1)
+            })
+        
+        # Sort by count descending
+        category_breakdown.sort(key=lambda x: x['count'], reverse=True)
+        
+        # Calculate weekly data for the past month
+        weekly_data = []
+        for i in range(7):
+            current_date = today - timedelta(days=6-i)  # Last 7 days
+            day_name = calendar.day_abbr[current_date.weekday()]
+            weekly_data.append({
+                "day": day_name,
+                "date": current_date.strftime("%Y-%m-%d"),
+                "processed": 0,
+                "spam": 0
+            })
+        
+        # Count emails by day for the last 7 days
+        for classification in monthly_classifications:
+            timestamp = classification.get('timestamp')
+            if timestamp:
+                if isinstance(timestamp, (int, float)):
+                    if timestamp > 1000000000000:  # Milliseconds
+                        email_date = datetime.fromtimestamp(timestamp / 1000)
+                    else:  # Seconds
+                        email_date = datetime.fromtimestamp(timestamp)
+                else:
+                    email_date = timestamp
+                
+                # Ensure email_date is timezone-naive for comparison
+                if hasattr(email_date, 'tzinfo') and email_date.tzinfo is not None:
+                    email_date = email_date.replace(tzinfo=None)
+                
+                # Check if email is from last 7 days
+                if email_date >= today - timedelta(days=7):
+                    day_of_week = email_date.weekday()
+                    day_name = calendar.day_abbr[day_of_week]
+                    
+                    # Find the corresponding day in weekly_data
+                    for day_data in weekly_data:
+                        if day_data["day"] == day_name:
+                            day_data["processed"] += 1
+                            if classification.get('classification', '').lower() in ['spam', 'not_spam', 'notspam']:
+                                day_data["spam"] += 1
+                            break
+        
+        # Add date range info
+        date_range = f"{one_month_ago.strftime('%b %d')} - {today.strftime('%b %d, %Y')}"
+        
+        return {
+            "success": True,
+            "stats": {
+                "total_processed": total_processed,
+                "spam_count": spam_count,
+                "accuracy": accuracy,
+                "top_category": top_category,
+                "category_breakdown": category_breakdown,
+                "weekly_data": weekly_data,
+                "date_range": date_range
+            }
+        }
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/user/{user_id}/billing-data")
+def get_user_billing_data(user_id: str):
+    """Get user billing data including trial and billing dates"""
+    try:
+        firebase_manager = FirebaseManager()
+        billing_data = firebase_manager.get_user_billing_data(user_id)
+        if billing_data:
+            return {"success": True, "billing_data": billing_data}
+        else:
+            return {"success": False, "error": "User not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/trigger-background-job")
 def trigger_background_job():
@@ -524,18 +906,62 @@ def trigger_background_job():
         background_email_job()
         return {"success": True, "message": "Background job completed"}
     except Exception as e:
-        return {"success": False, "error": str(e)} 
+        return {"success": False, "error": str(e)}
+
+@app.post("/trigger-user-sync/{user_id}")
+def trigger_user_sync(user_id: str):
+    """Manually trigger email classification for a specific user only"""
+    try:
+        print(f"=== MANUAL SYNC FOR USER {user_id} STARTED ===")
+        db = firestore.client()
+        
+        # Get the specific user document
+        user_ref = db.collection('identifier').document(user_id)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            return {"success": False, "error": "User not found"}
+        
+        user_data = user_doc.to_dict()
+        
+        # Check if user has active access (free trial or subscribed)
+        free_trial = user_data.get('free_trial', False)
+        subscribed = user_data.get('subscribed', False)
+        
+        if not free_trial and not subscribed:
+            return {"success": False, "error": "No active access - free trial or subscription required"}
+        
+        # Process only this specific user
+        process_user(user_doc)
+        
+        # Update last_sync for this user only
+        current_time = int(datetime.utcnow().timestamp())
+        user_ref.update({'last_sync': current_time})
+        
+        print(f"=== MANUAL SYNC FOR USER {user_id} COMPLETED ===")
+        return {"success": True, "message": f"Email classification completed for user {user_id}"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 def get_or_create_label(service, label_name):
+    # Gmail label mapping (AI output -> Gmail label name)
+    gmail_label_mapping = {
+        'OTPs': 'OTP'  # Gmail doesn't like "OTPs", use "OTP" instead
+    }
+    
+    # Use Gmail label name if mapping exists, otherwise use original
+    gmail_label_name = gmail_label_mapping.get(label_name, label_name)
+    
     # Get all labels
     labels = service.users().labels().list(userId='me').execute().get('labels', [])
+    
     for label in labels:
-        if label['name'].lower() == label_name.lower():
+        if label['name'].lower() == gmail_label_name.lower():
             return label['id']
     
     # If not found, create it
     label_obj = {
-        "name": label_name,
+        "name": gmail_label_name,
         "labelListVisibility": "labelShow",
         "messageListVisibility": "show",
         "type": "user"
@@ -624,75 +1050,9 @@ def verify_token(token_request: TokenRequest):
     except Exception as e:
         raise HTTPException(status_code=401, detail=f"Token verification failed: {str(e)}") 
 
-@app.post("/create-vabhi-user")
-def create_vabhi_user():
-    """Create user for vabhi9920@gmail.com with real subscription data"""
-    try:
-        db = firestore.client()
-        
-        # Create user document for vabhi9920@gmail.com
-        user_data = {
-            "uid": "user_vabhi9920",
-            "email": "vabhi9920@gmail.com",
-            "name": "Vabhi",
-            "created_at": datetime.utcnow(),
-            "subscription_status": "active",
-            "subscribed": True,
-            "subscription_id": "sub_real_payment",  # Replace with actual subscription ID
-            "customer_id": "cus_real_payment",      # Replace with actual customer ID
-            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
-            "payment_completed": True,
-            "settings": {
-                "auto_categorize": True,
-                "confidence_threshold": "0.8",
-                "spam_sensitivity": "medium"
-            },
-            "gmail_tokens": None,
-            "last_sync": None
-        }
-        
-        # Add to identifiers collection
-        user_ref = db.collection("identifier").document("user_vabhi9920")
-        user_ref.set(user_data)
-        
-        return {"success": True, "message": "Vabhi user created successfully", "user_id": "user_vabhi9920"}
-    except Exception as e:
-        return {"success": False, "error": str(e)} 
+ 
 
-@app.post("/create-user/{email}")
-def create_user(email: str):
-    """Create a user with active subscription for testing"""
-    try:
-        db = firestore.client()
-        
-        # Create user document
-        user_data = {
-            "uid": f"user_{email.replace('@', '_').replace('.', '_')}",
-            "email": email,
-            "name": email.split('@')[0].title(),
-            "created_at": datetime.utcnow(),
-            "subscription_status": "active",
-            "subscribed": True,
-            "subscription_id": f"sub_{email.replace('@', '_').replace('.', '_')}",
-            "customer_id": f"cus_{email.replace('@', '_').replace('.', '_')}",
-            "trial_end": int(datetime.utcnow().timestamp()) + (7 * 24 * 60 * 60),  # 7 days from now
-            "payment_completed": True,
-            "settings": {
-                "auto_categorize": True,
-                "confidence_threshold": "0.8",
-                "spam_sensitivity": "medium"
-            },
-            "gmail_tokens": None,
-            "last_sync": None
-        }
-        
-        # Add to identifiers collection
-        user_ref = db.collection("identifier").document(user_data["uid"])
-        user_ref.set(user_data)
-        
-        return {"success": True, "message": f"User {email} created successfully", "user_id": user_data["uid"]}
-    except Exception as e:
-        return {"success": False, "error": str(e)} 
+ 
 
 @app.get("/list-firebase")
 def list_firebase():
@@ -910,13 +1270,13 @@ def exchange_code(request: CodeExchangeRequest):
                     "user_id": user_doc.id
                 }
             else:
-                print("User exists but no active subscription, redirecting to payment")
-                redirect_url = "http://localhost:3000/payment"
+                print("User exists but no active subscription, redirecting to pricing")
+                redirect_url = "http://localhost:3000/pricing"
                 print(f"Returning redirect_url: {redirect_url}")
                 return {"redirect_url": redirect_url}
         else:
-            print("New user, redirecting to payment")
-            redirect_url = "http://localhost:3000/payment"
+            print("New user, redirecting to pricing")
+            redirect_url = "http://localhost:3000/pricing"
             print(f"Returning redirect_url: {redirect_url}")
             return {"redirect_url": redirect_url}
             
@@ -924,4 +1284,76 @@ def exchange_code(request: CodeExchangeRequest):
         print(f"Error in code exchange: {e}")
         import traceback
         traceback.print_exc()
-        return {"redirect_url": "http://localhost:3000/payment"} 
+        return {"redirect_url": "http://localhost:3000/pricing"} 
+
+@app.get("/debug-user/{user_id}")
+def debug_user(user_id: str):
+    """Debug endpoint to check raw user data in Firebase"""
+    try:
+        db = firestore.client()
+        doc_ref = db.collection("identifier").document(user_id)
+        doc = doc_ref.get()
+        
+        if doc.exists:
+            user_data = doc.to_dict()
+            return {
+                "success": True,
+                "user_data": user_data,
+                "has_next_billing_date": "next_billing_date" in user_data,
+                "next_billing_date_value": user_data.get("next_billing_date"),
+                "trial_end_value": user_data.get("trial_end"),
+                "subscribed_value": user_data.get("subscribed"),
+                "subscription_status": user_data.get("subscription_status")
+            }
+        else:
+            return {"success": False, "error": "User not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)} 
+
+@app.post("/toggle-email-processing/{user_id}")
+def toggle_email_processing(user_id: str, enabled: bool = True):
+    """Toggle email processing on/off for a specific user"""
+    try:
+        print(f"=== TOGGLE EMAIL PROCESSING CALLED ===")
+        print(f"User ID: {user_id}")
+        print(f"Enabled parameter: {enabled}")
+        
+        db = firestore.client()
+        current_time = int(datetime.utcnow().timestamp())
+        
+        if enabled:
+            # Enable processing
+            update_data = {
+                'email_processing_enabled': True,
+                'processing_disabled_until': None
+            }
+            status = "enabled"
+        else:
+            # Disable processing for 1 hour
+            disabled_until = current_time + (60 * 60)  # 1 hour from now
+            update_data = {
+                'email_processing_enabled': False,
+                'processing_disabled_until': disabled_until
+            }
+            status = "disabled for 1 hour"
+        
+        print(f"Update data: {update_data}")
+        
+        # Update the user's processing setting
+        user_ref = db.collection('identifier').document(user_id)
+        user_ref.update(update_data)
+        
+        print(f"Firebase update completed")
+        print(f"Email processing {status} for user {user_id}")
+        
+        return {
+            "success": True, 
+            "message": f"Email processing {status}",
+            "processing_enabled": enabled,
+            "disabled_until": update_data.get('processing_disabled_until')
+        }
+    except Exception as e:
+        print(f"Error in toggle_email_processing: {e}")
+        import traceback
+        traceback.print_exc()
+        return {"success": False, "error": str(e)} 

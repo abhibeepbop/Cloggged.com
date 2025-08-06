@@ -176,6 +176,9 @@ class StripeHandler:
                 "subscription_id": subscription['id'],
                 "customer_id": subscription['customer'],
                 "trial_end": subscription['trial_end'],
+                "trial_start": subscription['created'],  # When trial started
+                "payment_date": datetime.utcnow().timestamp(),  # When payment was completed
+                "next_billing_date": subscription['trial_end'],  # First billing after trial
                 "payment_completed": True,  # Trial is considered payment completed
                 "settings": {
                     "auto_categorize": True,

@@ -18,7 +18,10 @@ export function InboxHeader() {
             <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
               <span className="text-primary-foreground text-sm font-medium">C</span>
             </div>
-            <span className="text-xl text-gray-700">
+            <span 
+              className="text-xl text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
+              onClick={() => navigate('/')}
+            >
               Clogged.ai
             </span>
           </div>

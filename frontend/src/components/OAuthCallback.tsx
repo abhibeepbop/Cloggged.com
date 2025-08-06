@@ -40,16 +40,16 @@ export function OAuthCallback() {
               window.location.href = data.redirect_url;
             } else {
               // Fallback
-              console.log('No redirect_url, going to payment');
-              navigate('/payment');
+              console.log('No redirect_url, going to pricing');
+              navigate('/pricing');
             }
           } else {
             console.error('Failed to exchange code');
-            navigate('/payment');
+            navigate('/pricing');
           }
         } catch (error) {
           console.error('OAuth callback error:', error);
-          navigate('/payment');
+          navigate('/pricing');
         }
       } else {
         navigate('/');

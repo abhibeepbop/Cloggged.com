@@ -95,7 +95,6 @@ export function Dashboard() {
     { id: "billing", label: "Billing", icon: CreditCard },
     { id: "gmail", label: "Gmail Integration", icon: Mail },
     { id: "stats", label: "Email Stats", icon: BarChart3 },
-    { id: "settings", label: "Settings", icon: Settings },
   ]
 
   const renderContent = () => {
@@ -108,8 +107,6 @@ export function Dashboard() {
         return <GmailIntegration />
       case "stats":
         return <EmailStats />
-      case "settings":
-        return <SettingsPanel />
       default:
         return <AccountOverview />
     }
@@ -118,7 +115,7 @@ export function Dashboard() {
   return (
     <SidebarProvider>
       <div className="flex h-screen w-full">
-        <Sidebar>
+        <Sidebar className="mt-16">
           <SidebarContent>
             <SidebarGroup>
               <SidebarGroupLabel>MailSort AI Dashboard</SidebarGroupLabel>

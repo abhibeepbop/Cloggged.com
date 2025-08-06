@@ -2,16 +2,211 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/
 import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
 import { Progress } from "./ui/progress"
-import { CheckCircle, RefreshCw, Mail, AlertCircle, Clock } from "lucide-react"
+import { Switch } from "./ui/switch"
+import { CheckCircle, RefreshCw, Mail, AlertCircle, Clock, Settings } from "lucide-react"
+import { useState, useEffect } from "react"
+
+interface UserData {
+  email?: string
+  gmail_tokens?: any
+  last_sync?: number
+}
 
 export function GmailIntegration() {
+  const [userData, setUserData] = useState<UserData | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [syncInProgress, setSyncInProgress] = useState(false)
+  const [emailStats, setEmailStats] = useState<{total_processed: number} | null>(null)
+  const [processingPaused, setProcessingPaused] = useState(false)
+  const [pauseLoading, setPauseLoading] = useState(false)
+
+  useEffect(() => {
+    const fetchUserData = async () => {
+      try {
+        // Get user ID from localStorage or context
+        const userDataFromStorage = JSON.parse(localStorage.getItem('userData') || '{}')
+        const userId = userDataFromStorage.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2' // fallback for testing
+        
+        console.log('GmailIntegration - UserData from localStorage:', userDataFromStorage)
+        console.log('GmailIntegration - Using User ID:', userId)
+        
+        const response = await fetch(`http://localhost:8000/user/${userId}/billing-data`)
+        const result = await response.json()
+        
+        console.log('GmailIntegration - User data response:', result)
+        
+        if (result.success) {
+          // Get the full user data from Firebase
+          const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+          const userResult = await userResponse.json()
+          
+          if (userResult.success) {
+            setUserData(userResult.user_data)
+            console.log('GmailIntegration - User data set:', userResult.user_data)
+            
+            // Set processing status
+            const processingPaused = userResult.user_data.email_processing_enabled === false
+            
+            console.log('GmailIntegration - Setting processing status:', {
+              email_processing_enabled: userResult.user_data.email_processing_enabled,
+              processingPaused: processingPaused
+            })
+            
+            setProcessingPaused(processingPaused)
+          }
+          
+          // Fetch email stats
+          const statsResponse = await fetch(`http://localhost:8000/user/${userId}/email-stats`)
+          const statsResult = await statsResponse.json()
+          
+          if (statsResult.success) {
+            setEmailStats(statsResult.stats)
+            console.log('GmailIntegration - Email stats set:', statsResult.stats)
+          }
+        }
+      } catch (error) {
+        console.error('GmailIntegration - Error fetching user data:', error)
+      } finally {
+        setLoading(false)
+      }
+    }
+
+    fetchUserData()
+  }, [])
+
+
+
+  const handleManualSync = async () => {
+    if (syncInProgress) return
+    
+    setSyncInProgress(true)
+    try {
+      // Get user ID from localStorage or context
+      const userDataFromStorage = JSON.parse(localStorage.getItem('userData') || '{}')
+      const userId = userDataFromStorage.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2'
+      
+      console.log('Triggering manual sync for user:', userId)
+      const response = await fetch(`http://localhost:8000/trigger-user-sync/${userId}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      const result = await response.json()
+      console.log('Manual sync result:', result)
+      
+      if (result.success) {
+        // Refresh user data to get updated last_sync
+        const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+        const userResult = await userResponse.json()
+        
+        if (userResult.success) {
+          setUserData(userResult.user_data)
+        }
+      }
+    } catch (error) {
+      console.error('Error during manual sync:', error)
+    } finally {
+      setSyncInProgress(false)
+    }
+  }
+
+  const handlePauseProcessing = async () => {
+    if (pauseLoading) return
+    
+    setPauseLoading(true)
+    try {
+      const userDataFromStorage = JSON.parse(localStorage.getItem('userData') || '{}')
+      const userId = userDataFromStorage.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2'
+      
+      // Determine if we're pausing or resuming
+      const shouldEnable = processingPaused
+      const action = shouldEnable ? 'RESUME' : 'PAUSE'
+      
+      console.log(`=== ${action} PROCESSING CALLED ===`)
+      console.log(`User ID: ${userId}`)
+      console.log(`Current paused state: ${processingPaused}`)
+      console.log(`Should enable: ${shouldEnable}`)
+      
+      const response = await fetch(`http://localhost:8000/toggle-email-processing/${userId}?enabled=${shouldEnable}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+      
+      console.log(`Response status: ${response.status}`)
+      const result = await response.json()
+      console.log(`${action} processing result:`, result)
+      
+      if (result.success) {
+        console.log(`${action} successful, updating state`)
+        setProcessingPaused(!shouldEnable) // Toggle the paused state
+        
+        // Refresh user data
+        const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+        const userResult = await userResponse.json()
+        
+        if (userResult.success) {
+          setUserData(userResult.user_data)
+          console.log('User data refreshed:', userResult.user_data)
+        }
+      } else {
+        console.error(`${action} failed:`, result.error)
+      }
+    } catch (error) {
+      console.error(`Error ${processingPaused ? 'resuming' : 'pausing'} processing:`, error)
+    } finally {
+      setPauseLoading(false)
+    }
+  }
+
+  const formatLastSync = (timestamp: number | undefined) => {
+    if (!timestamp) return "Never"
+    
+    const now = Math.floor(Date.now() / 1000)
+    const diff = now - timestamp
+    
+    if (diff < 60) {
+      return `${diff} seconds ago`
+    } else if (diff < 3600) {
+      const minutes = Math.floor(diff / 60)
+      return `${minutes} minute${minutes > 1 ? 's' : ''} ago`
+    } else if (diff < 86400) {
+      const hours = Math.floor(diff / 3600)
+      return `${hours} hour${hours > 1 ? 's' : ''} ago`
+    } else {
+      const days = Math.floor(diff / 86400)
+      return `${days} day${days > 1 ? 's' : ''} ago`
+    }
+  }
+
+
+
   const integrationData = {
-    isConnected: true,
-    lastSync: "2 minutes ago",
-    emailsProcessed: 2847,
+    isConnected: !!userData?.gmail_tokens,
+    lastSync: formatLastSync(userData?.last_sync),
+    emailsProcessed: emailStats?.total_processed || 0,
     pendingEmails: 12,
-    syncInProgress: false,
-    accountEmail: "user@gmail.com"
+    syncInProgress: syncInProgress,
+    accountEmail: userData?.email || "Loading..."
+  }
+
+  if (loading) {
+    return (
+      <div className="space-y-8">
+        <div className="space-y-2">
+          <h2 className="text-3xl font-bold text-gray-900">Gmail Integration</h2>
+          <p className="text-gray-600">
+            Manage your Gmail connection and email synchronization
+          </p>
+        </div>
+        <div className="text-center py-8">
+          <p className="text-gray-600">Loading user data...</p>
+        </div>
+      </div>
+    )
   }
 
   return (
@@ -61,7 +256,7 @@ export function GmailIntegration() {
             <div className="space-y-2">
               <div className="text-sm font-medium">{integrationData.lastSync}</div>
               <p className="text-sm text-muted-foreground">
-                Auto-sync every 15 minutes
+                Auto-sync every 5 minutes
               </p>
             </div>
           </CardContent>
@@ -102,26 +297,53 @@ export function GmailIntegration() {
             </div>
             <Button 
               variant="outline" 
-              disabled={integrationData.syncInProgress}
+              disabled={syncInProgress}
+              onClick={handleManualSync}
               className="flex items-center gap-2"
             >
-              <RefreshCw className={`h-4 w-4 ${integrationData.syncInProgress ? 'animate-spin' : ''}`} />
-              {integrationData.syncInProgress ? 'Syncing...' : 'Sync Now'}
+              <RefreshCw className={`h-4 w-4 ${syncInProgress ? 'animate-spin' : ''}`} />
+              {syncInProgress ? 'Syncing...' : 'Sync Now'}
             </Button>
           </div>
+        </CardContent>
+      </Card>
 
-          {integrationData.pendingEmails > 0 && (
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Pending Emails</span>
-                <span>{integrationData.pendingEmails} emails</span>
+      {/* Email Processing Control */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Settings className="h-5 w-5" />
+            Email Processing Control
+          </CardTitle>
+          <CardDescription>
+            Temporarily pause email categorization
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-4 border rounded-lg">
+            <div className="space-y-1">
+              <div className="text-sm font-medium">Email Categorization</div>
+              <div className="text-sm text-muted-foreground">
+                {processingPaused 
+                  ? "Email processing is paused" 
+                  : "AI is actively categorizing your emails"
+                }
               </div>
-              <Progress value={(integrationData.pendingEmails / 100) * 100} className="h-2" />
-              <p className="text-xs text-muted-foreground">
-                These emails are queued for processing
-              </p>
             </div>
-          )}
+            <Button
+              variant={processingPaused ? "outline" : "destructive"}
+              onClick={handlePauseProcessing}
+              disabled={pauseLoading}
+              className="flex items-center gap-2"
+            >
+              {pauseLoading ? (
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-900"></div>
+              ) : (
+                <Settings className="h-4 w-4" />
+              )}
+              {processingPaused ? 'Resume Processing' : 'Pause Processing'}
+            </Button>
+          </div>
         </CardContent>
       </Card>
 
@@ -142,38 +364,6 @@ export function GmailIntegration() {
           </CardContent>
         </Card>
       )}
-
-      {/* Sync Settings */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Sync Settings</CardTitle>
-          <CardDescription>
-            Configure how your emails are synchronized
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Sync Frequency</label>
-              <select className="w-full p-2 border rounded-md text-sm">
-                <option value="15">Every 15 minutes</option>
-                <option value="30">Every 30 minutes</option>
-                <option value="60">Every hour</option>
-                <option value="manual">Manual only</option>
-              </select>
-            </div>
-            
-            <div className="space-y-2">
-              <label className="text-sm font-medium">Folders to Sync</label>
-              <select className="w-full p-2 border rounded-md text-sm">
-                <option value="inbox">Inbox only</option>
-                <option value="all">All folders</option>
-                <option value="custom">Custom selection</option>
-              </select>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   )
 }

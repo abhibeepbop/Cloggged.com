@@ -10,7 +10,7 @@ export function PaymentPage() {
   useEffect(() => {
     // Get user email from Firebase auth or localStorage
     // For now, we'll use a placeholder - you can enhance this later
-    const userEmail = localStorage.getItem('userEmail') || 'user@example.com';
+    const userEmail = localStorage.getItem('userEmail') || '';
     setCustomerEmail(userEmail);
     setIsLoading(false);
   }, []);
@@ -41,7 +41,12 @@ export function PaymentPage() {
       {/* Header */}
       <header className="border-b border-navy-800 shadow-md bg-navy-900">
         <div className="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
-          <h1 className="text-2xl font-bold tracking-tight text-white">Clogged.ai</h1>
+          <h1 
+            onClick={() => navigate('/')}
+            className="text-2xl font-bold tracking-tight text-white cursor-pointer hover:text-gray-200 transition-colors"
+          >
+            Clogged.ai
+          </h1>
           <div className="flex gap-8">
             <button 
               onClick={() => navigate('/')}
@@ -49,7 +54,10 @@ export function PaymentPage() {
             >
               Home
             </button>
-            <button className="bg-[#EFA6A7] hover:bg-[#e89899] text-black px-4 py-2 rounded-full font-medium transition-colors">
+            <button 
+              onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
+              className="bg-[#EFA6A7] hover:bg-[#e89899] text-black px-4 py-2 rounded-full font-medium transition-colors"
+            >
               Sign In
             </button>
           </div>
@@ -64,9 +72,8 @@ export function PaymentPage() {
             <p className="text-lg text-navy-700 mb-4">
               You're just one step away from organizing your inbox with AI
             </p>
-            <div className="bg-green-50 border border-green-200 rounded-lg p-4 max-w-md mx-auto">
-              <p className="text-green-800 font-medium">7-Day Free Trial</p>
-              <p className="text-sm text-green-700">No charge for the first week. Billing starts after trial ends.</p>
+            <div className="text-center">
+              <p className="text-navy-700 font-medium align-center">£5.99/month • Cancel anytime</p>
             </div>
           </div>
 
@@ -77,23 +84,7 @@ export function PaymentPage() {
             customerEmail={customerEmail}
           />
 
-          {/* Trust indicators */}
-          <div className="mt-8 text-center">
-            <div className="flex justify-center items-center space-x-6 text-sm text-navy-600">
-              <div className="flex items-center">
-                <span className="mr-2">🔒</span>
-                <span>Secure payment</span>
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">🔄</span>
-                <span>7-day free trial</span>
-              </div>
-              <div className="flex items-center">
-                <span className="mr-2">💳</span>
-                <span>Cancel anytime</span>
-              </div>
-            </div>
-          </div>
+
         </div>
       </main>
     </div>

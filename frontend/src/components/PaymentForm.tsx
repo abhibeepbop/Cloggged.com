@@ -21,11 +21,41 @@ function CheckoutForm({ onSuccess, onCancel, customerEmail }: PaymentFormProps) 
   const elements = useElements();
   const [isProcessing, setIsProcessing] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [clientSecret, setClientSecret] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    // Create payment intent when component mounts
+    const createPaymentIntent = async () => {
+      try {
+        const response = await fetch('http://localhost:8000/create-payment-intent', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            customer_email: customerEmail,
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.success) {
+          setClientSecret(data.client_secret);
+        } else {
+          setError(data.error || 'Failed to create payment intent');
+        }
+      } catch (err) {
+        setError('Failed to initialize payment');
+      }
+    };
+
+    createPaymentIntent();
+  }, [customerEmail]);
 
   const handleSubmit = async (event: React.FormEvent) => {
     event.preventDefault();
 
-    if (!stripe || !elements) {
+    if (!stripe || !elements || !clientSecret) {
       return;
     }
 
@@ -33,38 +63,18 @@ function CheckoutForm({ onSuccess, onCancel, customerEmail }: PaymentFormProps) 
     setError(null);
 
     try {
-      // Create payment intent
-      const response = await fetch('http://localhost:8000/create-payment-intent', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
+      // Handle card payment
+      const result = await stripe.confirmCardSetup(clientSecret, {
+        payment_method: {
+          card: elements.getElement(CardElement)!,
+          billing_details: {
+            email: customerEmail,
+          },
         },
-        body: JSON.stringify({
-          customer_email: customerEmail,
-        }),
       });
 
-      const data = await response.json();
-
-      if (!data.success) {
-        throw new Error(data.error || 'Failed to create setup intent');
-      }
-
-      // Confirm setup intent
-      const { error: confirmError } = await stripe.confirmCardSetup(
-        data.client_secret,
-        {
-          payment_method: {
-            card: elements.getElement(CardElement)!,
-            billing_details: {
-              email: customerEmail,
-            },
-          },
-        }
-      );
-
-      if (confirmError) {
-        setError(confirmError.message || 'Payment failed');
+      if (result.error) {
+        setError(result.error.message || 'Payment failed');
       } else {
         // Payment successful
         onSuccess();
@@ -84,12 +94,6 @@ function CheckoutForm({ onSuccess, onCancel, customerEmail }: PaymentFormProps) 
         </h3>
         
         <div className="mb-4">
-          <p className="text-sm text-gray-600 mb-2">Email: {customerEmail}</p>
-          <div className="bg-green-50 border border-green-200 rounded-lg p-3 mb-3">
-            <p className="text-sm text-green-800 font-medium">🎉 7-Day Free Trial</p>
-            <p className="text-xs text-green-700">No charge for the first week. Billing starts after trial ends.</p>
-          </div>
-          <p className="text-sm text-gray-600">Then £5.99/month • Cancel anytime</p>
         </div>
 
         <div className="mb-6">
@@ -125,7 +129,7 @@ function CheckoutForm({ onSuccess, onCancel, customerEmail }: PaymentFormProps) 
         <div className="flex space-x-3">
           <button
             type="submit"
-            disabled={!stripe || isProcessing}
+            disabled={!stripe || isProcessing || !clientSecret}
             className="flex-1 bg-[#EFA6A7] hover:bg-[#e89899] text-black font-medium py-2 px-4 rounded-full transition-colors disabled:opacity-50"
           >
             {isProcessing ? 'Processing...' : 'Start 7-Day Free Trial'}
