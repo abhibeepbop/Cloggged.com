@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, status, Depends, Request, Security
+from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
 import firebase_admin
@@ -72,12 +73,74 @@ def verify_firebase_token(request: Request):
         raise HTTPException(status_code=401, detail="Invalid Firebase ID token")
 
 
+# Unified access check used across auth flows
+def user_can_access_dashboard(user_data: dict) -> bool:
+    """Return True if the user should see the dashboard (active sub or active trial)."""
+    try:
+        now_ts = int(datetime.utcnow().timestamp())
+    except Exception:
+        now_ts = 0
+
+    def to_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value == 1
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes", "y"}
+        return False
+
+    # Relaxed rule: subscribed flag OR free trial is enough (coerce string/number values)
+    has_active_subscription = to_bool(user_data.get("subscribed")) or (
+        user_data.get("subscription_status") == "active" and to_bool(user_data.get("payment_completed"))
+    )
+
+    trial_end = user_data.get("trial_end")
+    in_free_trial = to_bool(user_data.get("free_trial")) or (
+        isinstance(trial_end, (int, float)) and trial_end > now_ts
+    )
+
+    return bool(has_active_subscription or in_free_trial)
+
+# --- Helpers: JSON-safe serialization for Firestore data ---
+def _json_safe(value):
+    try:
+        # Firestore timestamp objects (DatetimeWithNanoseconds) and datetime
+        if hasattr(value, "__class__") and value.__class__.__name__.endswith("DatetimeWithNanoseconds"):
+            return int(value.timestamp())
+        from datetime import datetime as _dt
+        if isinstance(value, _dt):
+            return int(value.timestamp())
+    except Exception:
+        pass
+    if isinstance(value, dict):
+        return {k: _json_safe(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_json_safe(v) for v in value]
+    return value
+
+def _sanitize_user_for_client(user: dict) -> dict:
+    """Remove sensitive fields before sending user data to the frontend."""
+    if not isinstance(user, dict):
+        return {}
+    redacted = dict(user)
+    # Never expose OAuth tokens or secrets to the browser
+    redacted.pop("gmail_tokens", None)
+    return redacted
+
+# --- Session (JWT) helpers ---
+ 
+
+
 @app.get("/")
 def read_root(code: str = None, state: str = None):
     """Handle OAuth callback at root path since redirect_uri is http://localhost"""
     if code and state:
         return gmail_oauth2callback(code, state)
     return {"status": "ok", "message": "Mail Agent API is running"}
+
+
+ 
 
 @app.get("/firestore-test")
 def firestore_test():
@@ -137,11 +200,11 @@ def google_auth():
         redirect_uri=GOOGLE_REDIRECT_URI
     )
     # Use a temporary state for sign-in
+    # Do not force prompt=consent here to avoid repeated consent screens for returning users
     auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
-        state="signin",  # Use "signin" to distinguish from Gmail connection
-        prompt="consent"
+        state="signin"  # Use "signin" to distinguish from Gmail connection
     )
     print("AUTH_URL:", auth_url)
     # Redirect directly to Google OAuth
@@ -160,11 +223,22 @@ def gmail_connect(user=Depends(verify_firebase_token)):
         redirect_uri=GOOGLE_REDIRECT_URI
     )
     # Use user's UID as state to identify them in callback
+    # If the user already has a refresh token saved, skip OAuth and go straight to payment
+    try:
+        db = firestore.client()
+        user_doc = db.collection("identifier").document(user["uid"]).get()
+        if user_doc.exists:
+            user_data = user_doc.to_dict() or {}
+            if user_data.get("gmail_tokens", {}).get("refresh_token"):
+                from fastapi.responses import RedirectResponse
+                return RedirectResponse(url="http://localhost:3000/payment")
+    except Exception:
+        pass
+
     auth_url, state = flow.authorization_url(
         access_type="offline",
         include_granted_scopes="true",
-        state=user["uid"],
-        prompt="consent"
+        state=user["uid"]
     )
     print("AUTH_URL:", auth_url)
     print("AUTH_URL length:", len(auth_url))
@@ -239,45 +313,73 @@ def gmail_oauth2callback(code: str, state: str):
                 print(f"Free trial: {user_data.get('free_trial')}")
                 print(f"Subscribed: {user_data.get('subscribed')}")
                 
-                # Check if user has active access (free trial or subscribed)
-                free_trial = user_data.get('free_trial', False)
-                subscribed = user_data.get('subscribed', False)
+                # Set authflow/consent to True since user has granted access during Google sign-in
+                user_doc.reference.update({"authflow": True, "consent": True})
+                print(f"Set authflow to True for user {user_email}")
                 
-                print(f"DEBUG - free_trial: {free_trial} (type: {type(free_trial)})")
-                print(f"DEBUG - subscribed: {subscribed} (type: {type(subscribed)})")
-                
-                if free_trial or subscribed:
-                    print(f"User {user_email} has active access (free_trial: {free_trial}, subscribed: {subscribed}), redirecting to dashboard")
-                    # Create Firebase custom token for the user
+                # Unified access check
+                if user_can_access_dashboard(user_data):
+                    print("Access granted by unified rule, redirecting to dashboard")
                     try:
-                        custom_token = auth.create_custom_token(user_doc.id)
-                        # Redirect to dashboard with token
-                        from fastapi.responses import RedirectResponse
-                        return RedirectResponse(url=f"http://localhost:3000/dashboard?token={custom_token}")
+                        resp = RedirectResponse(url="http://localhost:3000/dashboard")
+                        return resp
                     except Exception as e:
-                        print(f"Error creating custom token: {e}")
-                        # Fallback: redirect to dashboard without token
+                        print(f"Error creating session token: {e}")
                         return RedirectResponse(url="http://localhost:3000/dashboard")
                 else:
-                    print(f"User {user_email} exists but no active access, redirecting to payment")
-                    print(f"Free trial: {user_data.get('free_trial')}")
-                    print(f"Subscribed: {user_data.get('subscribed')}")
-                    print(f"DEBUG - Condition failed: free_trial={free_trial}, subscribed={subscribed}")
-                    # Store user info temporarily and redirect to payment
-                    return RedirectResponse(url="http://localhost:3000/payment")
+                    print("Access denied by unified rule, redirecting to pricing")
+                    from fastapi.responses import RedirectResponse
+                    return RedirectResponse(url="http://localhost:3000/pricing")
             else:
-                print(f"New user {user_email}, redirecting to payment")
-                # New user, redirect to payment
-                return RedirectResponse(url="http://localhost:3000/payment")
+                print(f"New user {user_email}, creating user record and redirecting appropriately")
+                # Create new user record with authflow set to True
+                new_user_data = {
+                    "email": user_email,
+                    "name": user_name,
+                    "picture": user_info.get('picture', ''),
+                    "subscribed": False,
+                    "payment_completed": False,
+                    "subscription_status": "inactive",
+                    "created_at": int(datetime.utcnow().timestamp()),
+                    "email_processing_enabled": True,
+                    "authflow": True,
+                    "consent": True
+                }
+                
+                # Add to Firebase
+                new_user_ref = users_ref.add(new_user_data)
+                print(f"Created new user {user_email} with authflow=True")
+                
+                # Unified access check for brand new user
+                if user_can_access_dashboard(new_user_data):
+                    from fastapi.responses import RedirectResponse
+                    return RedirectResponse(url="http://localhost:3000/dashboard")
+                else:
+                    from fastapi.responses import RedirectResponse
+                    return RedirectResponse(url="http://localhost:3000/pricing")
         else:
             # This is Gmail connection for existing user
             # Store tokens in Firestore under users/<uid>/gmail_tokens
             db = firestore.client()
             user_ref = db.collection("identifier").document(state)
-            user_ref.update({"gmail_tokens": tokens})
-            print("Tokens stored in Firebase successfully")
+            # If we already have a refresh token stored, do not overwrite with None from Google
+            existing = user_ref.get().to_dict() or {}
+            existing_tokens = existing.get("gmail_tokens") or {}
+            if not tokens.get("refresh_token"):
+                tokens["refresh_token"] = existing_tokens.get("refresh_token")
+            user_ref.update({
+                "gmail_tokens": tokens,
+                "authflow": True  # User has now granted Gmail access
+            })
+            print("Tokens stored in Firebase successfully, authflow set to True")
             
-            return {"success": True, "message": "Gmail tokens stored for user.", "user": state}
+            # Maintain session cookie if present; otherwise create one
+            user_id = state
+            try:
+                resp = RedirectResponse(url="http://localhost:3000/payment")
+                return resp
+            except Exception:
+                return RedirectResponse(url="http://localhost:3000/payment")
     except Exception as e:
         print(f"Error in OAuth callback: {e}")
         import traceback
@@ -297,12 +399,12 @@ def get_gmail_service_for_user(uid):
     if not tokens:
         raise Exception("No Gmail tokens found for user")
     creds = Credentials(
-        tokens["token"],
-        refresh_token=tokens["refresh_token"],
-        token_uri=tokens["token_uri"],
-        client_id=tokens["client_id"],
-        client_secret=tokens["client_secret"],
-        scopes=tokens["scopes"]
+        tokens.get("token"),
+        refresh_token=tokens.get("refresh_token"),
+        token_uri=tokens.get("token_uri"),
+        client_id=tokens.get("client_id"),
+        client_secret=tokens.get("client_secret"),
+        scopes=tokens.get("scopes")
     )
     service = build("gmail", "v1", credentials=creds)
     return service
@@ -705,7 +807,7 @@ def background_email_job():
 
 # APScheduler setup
 scheduler = BackgroundScheduler()
-scheduler.add_job(background_email_job, 'interval', minutes=2)
+scheduler.add_job(background_email_job, 'interval', minutes=20)
 scheduler.start()
 
 def run_scheduler_in_thread():
@@ -982,6 +1084,9 @@ class CodeExchangeRequest(BaseModel):
     code: str
     state: str
 
+class ConsentRequest(BaseModel):
+    consent: bool
+
 @app.post("/create-payment-intent")
 def create_payment_intent(payment_request: PaymentRequest):
     """Create a setup intent for the £5.99 subscription with 7-day trial"""
@@ -1090,6 +1195,28 @@ def list_firebase():
         }
     except Exception as e:
         return {"success": False, "error": str(e)} 
+
+@app.post("/user/{user_id}/consent")
+def set_user_consent(user_id: str, req: ConsentRequest):
+    """Set user's consent flag in Firestore and return next redirect target."""
+    try:
+        db = firestore.client()
+        doc_ref = db.collection("identifier").document(user_id)
+        doc = doc_ref.get()
+        if not doc.exists:
+            return {"success": False, "error": "User not found"}
+        # Update consent
+        doc_ref.update({"consent": bool(req.consent)})
+        user_data = doc.to_dict() or {}
+        user_data["consent"] = bool(req.consent)
+        # Decide where to send them next
+        if not user_data.get("consent"):
+            target = "http://localhost:3000/consent"
+        else:
+            target = "http://localhost:3000/dashboard" if user_can_access_dashboard(user_data) else "http://localhost:3000/"
+        return {"success": True, "redirect_url": target}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/update-users-subscribed")
 def update_users_subscribed():
@@ -1243,42 +1370,84 @@ def exchange_code(request: CodeExchangeRequest):
         
         print(f"User email: {user_email}")
         
-        # Check Firebase for subscription
+        # Check Firebase for subscription with basic retry to handle quota blips
         db = firestore.client()
         users_ref = db.collection("identifier")
-        query = users_ref.where("email", "==", user_email).limit(1)
-        docs = query.get()
+        attempts = 0
+        docs = []
+        while attempts < 3:
+            attempts += 1
+            try:
+                docs = users_ref.where("email", "==", user_email).limit(1).get()
+                break
+            except Exception as fe:
+                # Simple backoff: 0.3s, 0.6s, 1.2s
+                import time as _t
+                _t.sleep(0.3 * (2 ** (attempts - 1)))
+                if attempts >= 3:
+                    raise fe
         
         if docs:
             user_doc = docs[0]
             user_data = user_doc.to_dict()
             
-            payment_completed = user_data.get("payment_completed")
-            subscription_status = user_data.get("subscription_status")
-            subscribed = user_data.get("subscribed")
+            # Set authflow to True since user has granted access during sign-in
+            user_doc.reference.update({"authflow": True})
+            print(f"Set authflow to True for existing user {user_email}")
             
-            print(f"User found: payment_completed={payment_completed}, subscription_status={subscription_status}, subscribed={subscribed}")
+            print(
+                "User found: payment_completed=", user_data.get("payment_completed"),
+                ", subscription_status=", user_data.get("subscription_status"),
+                ", subscribed=", user_data.get("subscribed")
+            )
             
-            if payment_completed and subscription_status == "active" and subscribed == True:
-                print("User has active subscription, redirecting to dashboard")
-                # Return user data directly instead of custom token
-                redirect_url = "http://localhost:3000/dashboard"
-                print(f"Returning redirect_url: {redirect_url}")
-                return {
-                    "redirect_url": redirect_url,
-                    "user_data": user_data,
-                    "user_id": user_doc.id
-                }
-            else:
-                print("User exists but no active subscription, redirecting to pricing")
-                redirect_url = "http://localhost:3000/pricing"
-                print(f"Returning redirect_url: {redirect_url}")
-                return {"redirect_url": redirect_url}
+            # Google consent is the only consent screen. Existing users go directly based on access.
+            target = "http://localhost:3000/dashboard" if user_can_access_dashboard(user_data) else "http://localhost:3000/pricing"
+            print(f"Returning redirect_url: {target}")
+            safe_user = _sanitize_user_for_client(_json_safe(user_data))
+            resp = JSONResponse({
+                "redirect_url": target,
+                "user_data": safe_user,
+                "user_id": user_doc.id
+            })
+            return resp
         else:
-            print("New user, redirecting to pricing")
-            redirect_url = "http://localhost:3000/pricing"
-            print(f"Returning redirect_url: {redirect_url}")
-            return {"redirect_url": redirect_url}
+            print("New user, creating record and redirecting to pricing")
+            # Create new user record (idempotent: if email exists by race, fetch again)
+            new_user_data = {
+                "email": user_email,
+                "name": user_info.get('name', ''),
+                "picture": user_info.get('picture', ''),
+                "subscribed": False,
+                "payment_completed": False,
+                "subscription_status": "inactive",
+                "created_at": int(datetime.utcnow().timestamp()),
+                "email_processing_enabled": True,
+                "authflow": True  # User has granted access during sign-in
+            }
+            
+            # Attempt add; if quota/race, re-query
+            try:
+                new_user_ref = users_ref.add(new_user_data)
+                new_user_id = new_user_ref[1].id
+            except Exception:
+                # Re-query to find the created user
+                docs2 = users_ref.where("email", "==", user_email).limit(1).get()
+                if docs2:
+                    new_user_id = docs2[0].id
+                else:
+                    raise
+            
+            # New users: direct to dashboard if they have access, else to pricing
+            target = "http://localhost:3000/dashboard" if user_can_access_dashboard(new_user_data) else "http://localhost:3000/pricing"
+            print(f"Returning redirect_url: {target}")
+            safe_new = _sanitize_user_for_client(_json_safe(new_user_data))
+            resp = JSONResponse({
+                "redirect_url": target,
+                "user_data": safe_new,
+                "user_id": new_user_id
+            })
+            return resp
             
     except Exception as e:
         print(f"Error in code exchange: {e}")
@@ -1295,7 +1464,7 @@ def debug_user(user_id: str):
         doc = doc_ref.get()
         
         if doc.exists:
-            user_data = doc.to_dict()
+            user_data = _sanitize_user_for_client(_json_safe(doc.to_dict()))
             return {
                 "success": True,
                 "user_data": user_data,
@@ -1309,6 +1478,81 @@ def debug_user(user_id: str):
             return {"success": False, "error": "User not found"}
     except Exception as e:
         return {"success": False, "error": str(e)} 
+
+@app.get("/check-authflow/{user_id}")
+def check_authflow(user_id: str):
+    """Check if user has granted Gmail access (authflow field)"""
+    try:
+        db = firestore.client()
+        user_ref = db.collection("identifier").document(user_id)
+        user_doc = user_ref.get()
+        
+        if user_doc.exists:
+            user_data = user_doc.to_dict()
+            authflow = user_data.get("authflow", False)
+            return {
+                "success": True,
+                "authflow": authflow,
+                "needs_gmail_oauth": not authflow
+            }
+        else:
+            return {"success": False, "error": "User not found"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.get("/gmail/connect-simple/{user_id}")
+def gmail_connect_simple(user_id: str):
+    """Start Gmail OAuth flow for a specific user without requiring Firebase token"""
+    try:
+        print(f"Starting Gmail OAuth for user: {user_id}")
+        # Start OAuth flow for Gmail
+        flow = Flow.from_client_secrets_file(
+            GOOGLE_OAUTH_CLIENT_SECRET_PATH,
+            scopes=GOOGLE_SCOPES,
+            redirect_uri=GOOGLE_REDIRECT_URI
+        )
+        # Use user's UID as state to identify them in callback
+        auth_url, state = flow.authorization_url(
+            access_type="offline",
+            include_granted_scopes="true",
+            state=user_id,
+            prompt="consent"
+        )
+        print(f"Gmail OAuth URL generated for user {user_id}")
+        # Redirect directly to Google OAuth
+        return RedirectResponse(url=auth_url)
+    except Exception as e:
+        print(f"Error starting Gmail OAuth for user {user_id}: {e}")
+        return {"error": str(e)}
+
+@app.post("/update-existing-users-authflow")
+def update_existing_users_authflow():
+    """Update existing users to have authflow field based on whether they have Gmail tokens"""
+    try:
+        db = firestore.client()
+        users_ref = db.collection("identifier")
+        docs = users_ref.get()
+        
+        updated_count = 0
+        for doc in docs:
+            user_data = doc.to_dict()
+            gmail_tokens = user_data.get("gmail_tokens")
+            authflow = user_data.get("authflow")
+            
+            # If user has Gmail tokens but no authflow field, set authflow to True
+            if gmail_tokens and authflow is None:
+                doc.reference.update({"authflow": True})
+                updated_count += 1
+                print(f"Updated user {doc.id} with authflow=True")
+            # If user has no Gmail tokens and no authflow field, set authflow to False
+            elif not gmail_tokens and authflow is None:
+                doc.reference.update({"authflow": False})
+                updated_count += 1
+                print(f"Updated user {doc.id} with authflow=False")
+        
+        return {"success": True, "updated_count": updated_count}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
 
 @app.post("/toggle-email-processing/{user_id}")
 def toggle_email_processing(user_id: str, enabled: bool = True):
@@ -1357,3 +1601,8 @@ def toggle_email_processing(user_id: str, enabled: bool = True):
         import traceback
         traceback.print_exc()
         return {"success": False, "error": str(e)} 
+
+
+@app.post("/auth/logout")
+def auth_logout():
+    return JSONResponse({"success": True})

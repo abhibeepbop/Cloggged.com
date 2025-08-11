@@ -1,6 +1,7 @@
 
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { InboxHeaderUser } from "./InboxHeaderUser";
 
 interface PricingProps {
   onStartFreeTrial: () => void;
@@ -9,15 +10,47 @@ interface PricingProps {
 export function Pricing({ onStartFreeTrial }: PricingProps) {
   const navigate = useNavigate();
   
-  const handleStartFreeTrial = () => {
+  const handleStartFreeTrial = async () => {
     // Check if user is already authenticated
     const isAuthenticated = localStorage.getItem('isAuthenticated');
     const userData = localStorage.getItem('userData');
     
     if (isAuthenticated && userData) {
-      // User is already signed in, go directly to payment
-      console.log('User already authenticated, going to payment');
-      navigate('/payment');
+      // User is already signed in, check if they need Gmail OAuth
+      const userDataObj = JSON.parse(userData);
+      const userId = userDataObj.user_id || userDataObj.uid;
+      
+      if (userId) {
+        try {
+          // Check if user has granted Gmail access
+          const response = await fetch(`http://localhost:8000/check-authflow/${userId}`);
+          const data = await response.json();
+          
+          if (data.success) {
+            if (data.authflow) {
+              // User has already granted Gmail access, go directly to payment
+              console.log('User has granted Gmail access, going to payment');
+              navigate('/payment');
+            } else {
+              // User needs to grant Gmail access first
+              console.log('User needs to grant Gmail access, going to Gmail OAuth');
+              window.location.href = `http://localhost:8000/gmail/connect-simple/${userId}`;
+            }
+          } else {
+            console.error('Failed to check authflow:', data.error);
+            // Fallback to payment
+            navigate('/payment');
+          }
+        } catch (error) {
+          console.error('Error checking authflow:', error);
+          // Fallback to payment
+          navigate('/payment');
+        }
+      } else {
+        // No user ID, go directly to payment
+        console.log('No user ID found, going to payment');
+        navigate('/payment');
+      }
     } else {
       // User needs to sign in first
       console.log('User not authenticated, going to OAuth');
@@ -33,31 +66,8 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
 
   return (
     <div className="bg-navy-50 min-h-screen font-['Inter']">
-      {/* Header */}
-      <header className="border-b border-navy-800 shadow-md bg-navy-900">
-        <div className="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
-          <h1 
-            onClick={handleHomeClick}
-            className="text-2xl font-bold tracking-tight text-black cursor-pointer hover:text-gray-700 transition-colors"
-          >
-            Clogged.ai
-          </h1>
-          <div className="flex gap-20">
-            <button 
-              onClick={handleHomeClick}
-              className="bg-white hover:bg-gray-100 text-black border-2 border-black px-4 py-2 rounded-full font-medium transition-colors"
-            >
-              Home
-            </button>
-            <button 
-              onClick={handleStartFreeTrial}
-              className="bg-[#EFA6A7] hover:bg-[#e89899] text-black px-4 py-2 rounded-full font-medium transition-colors"
-            >
-              Sign In
-            </button>
-          </div>
-        </div>
-      </header>
+      {/* Header replaced with shared InboxHeaderUser */}
+      <InboxHeaderUser />
 
       {/* Main Content */}
       <main className="flex flex-col items-center justify-center py-16 px-6 pb-0">

@@ -73,7 +73,7 @@ export function PaymentPage() {
               You're just one step away from organizing your inbox with AI
             </p>
             <div className="text-center">
-              <p className="text-navy-700 font-medium align-center">£5.99/month • Cancel anytime</p>
+              <p className="text-navy-700 font-medium">£5.99/month • Cancel anytime</p>
             </div>
           </div>
 

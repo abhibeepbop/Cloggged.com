@@ -7,12 +7,17 @@ import { useNavigate } from "react-router-dom"
 export function QuickActions() {
   const navigate = useNavigate()
   
-  const handleLogout = () => {
+  const handleLogout = async () => {
+    try {
+      await fetch('http://localhost:8000/auth/logout', { method: 'POST', credentials: 'include' })
+    } catch (_) {
+      // ignore network errors on logout
+    }
     // Clear user data
     localStorage.removeItem('userData')
     localStorage.removeItem('isAuthenticated')
-    // Redirect to pricing page
-    navigate('/pricing')
+    // Redirect to home page
+    window.location.href = '/'
   }
 
   const notifications = [
