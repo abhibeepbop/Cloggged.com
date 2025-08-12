@@ -52,8 +52,7 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
         navigate('/payment');
       }
     } else {
-      // User needs to sign in first
-      console.log('User not authenticated, going to OAuth');
+      // Keep original flow: backend Google OAuth redirect
       window.location.href = 'http://localhost:8000/auth/google';
     }
   };

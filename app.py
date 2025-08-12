@@ -102,6 +102,52 @@ def user_can_access_dashboard(user_data: dict) -> bool:
 
     return bool(has_active_subscription or in_free_trial)
 
+# --- Session (JWT) helpers ---
+import jwt
+
+JWT_SECRET = os.getenv("APP_JWT_SECRET", "dev-secret-change-me")
+JWT_ALG = "HS256"
+SESSION_COOKIE_NAME = "session"
+SESSION_TTL_SECONDS = 60 * 60 * 24 * 7  # 7 days
+
+def create_session_jwt(user_id: str) -> str:
+    now = int(datetime.utcnow().timestamp())
+    payload = {"sub": user_id, "iat": now, "exp": now + SESSION_TTL_SECONDS, "typ": "session"}
+    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALG)
+
+def decode_session_jwt(token: str) -> dict:
+    return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
+
+def set_session_cookie(response: JSONResponse, token: str):
+    # Dev: secure=False; set True in production behind HTTPS
+    response.set_cookie(
+        key=SESSION_COOKIE_NAME,
+        value=token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        max_age=SESSION_TTL_SECONDS,
+        path="/",
+    )
+
+def clear_session_cookie(response: JSONResponse):
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+
+def get_session_user_id_or_401(request: Request) -> str:
+    token = request.cookies.get(SESSION_COOKIE_NAME)
+    if not token:
+        raise HTTPException(status_code=401, detail="Missing session cookie")
+    try:
+        payload = decode_session_jwt(token)
+        user_id = payload.get("sub")
+        if not user_id:
+            raise HTTPException(status_code=401, detail="Invalid session payload")
+        return user_id
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Session expired")
+    except Exception:
+        raise HTTPException(status_code=401, detail="Invalid session token")
+
 # --- Helpers: JSON-safe serialization for Firestore data ---
 def _json_safe(value):
     try:
@@ -1405,11 +1451,14 @@ def exchange_code(request: CodeExchangeRequest):
             target = "http://localhost:3000/dashboard" if user_can_access_dashboard(user_data) else "http://localhost:3000/pricing"
             print(f"Returning redirect_url: {target}")
             safe_user = _sanitize_user_for_client(_json_safe(user_data))
+            # Set httpOnly session cookie
+            session_token = create_session_jwt(user_doc.id)
             resp = JSONResponse({
                 "redirect_url": target,
                 "user_data": safe_user,
                 "user_id": user_doc.id
             })
+            set_session_cookie(resp, session_token)
             return resp
         else:
             print("New user, creating record and redirecting to pricing")
@@ -1442,11 +1491,13 @@ def exchange_code(request: CodeExchangeRequest):
             target = "http://localhost:3000/dashboard" if user_can_access_dashboard(new_user_data) else "http://localhost:3000/pricing"
             print(f"Returning redirect_url: {target}")
             safe_new = _sanitize_user_for_client(_json_safe(new_user_data))
+            session_token = create_session_jwt(new_user_id)
             resp = JSONResponse({
                 "redirect_url": target,
                 "user_data": safe_new,
                 "user_id": new_user_id
             })
+            set_session_cookie(resp, session_token)
             return resp
             
     except Exception as e:
@@ -1605,4 +1656,16 @@ def toggle_email_processing(user_id: str, enabled: bool = True):
 
 @app.post("/auth/logout")
 def auth_logout():
-    return JSONResponse({"success": True})
+    resp = JSONResponse({"success": True})
+    clear_session_cookie(resp)
+    return resp
+
+@app.get("/session/me")
+def session_me(request: Request):
+    user_id = get_session_user_id_or_401(request)
+    db = firestore.client()
+    doc = db.collection("identifier").document(user_id).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="User not found")
+    safe_user = _sanitize_user_for_client(_json_safe(doc.to_dict() or {}))
+    return {"user_id": user_id, "user_data": safe_user}
