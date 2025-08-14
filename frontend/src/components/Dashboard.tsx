@@ -92,7 +92,6 @@ export function Dashboard() {
 
   const menuItems = [
     { id: "overview", label: "Account Overview", icon: User },
-    { id: "billing", label: "Billing", icon: CreditCard },
     { id: "gmail", label: "Gmail Integration", icon: Mail },
     { id: "stats", label: "Email Stats", icon: BarChart3 },
   ]
@@ -101,8 +100,6 @@ export function Dashboard() {
     switch (activeSection) {
       case "overview":
         return <AccountOverview />
-      case "billing":
-        return <BillingManagement />
       case "gmail":
         return <GmailIntegration />
       case "stats":

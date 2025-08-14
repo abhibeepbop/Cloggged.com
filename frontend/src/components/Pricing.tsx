@@ -11,50 +11,7 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
   const navigate = useNavigate();
   
   const handleStartFreeTrial = async () => {
-    // Check if user is already authenticated
-    const isAuthenticated = localStorage.getItem('isAuthenticated');
-    const userData = localStorage.getItem('userData');
-    
-    if (isAuthenticated && userData) {
-      // User is already signed in, check if they need Gmail OAuth
-      const userDataObj = JSON.parse(userData);
-      const userId = userDataObj.user_id || userDataObj.uid;
-      
-      if (userId) {
-        try {
-          // Check if user has granted Gmail access
-          const response = await fetch(`http://localhost:8000/check-authflow/${userId}`);
-          const data = await response.json();
-          
-          if (data.success) {
-            if (data.authflow) {
-              // User has already granted Gmail access, go directly to payment
-              console.log('User has granted Gmail access, going to payment');
-              navigate('/payment');
-            } else {
-              // User needs to grant Gmail access first
-              console.log('User needs to grant Gmail access, going to Gmail OAuth');
-              window.location.href = `http://localhost:8000/gmail/connect-simple/${userId}`;
-            }
-          } else {
-            console.error('Failed to check authflow:', data.error);
-            // Fallback to payment
-            navigate('/payment');
-          }
-        } catch (error) {
-          console.error('Error checking authflow:', error);
-          // Fallback to payment
-          navigate('/payment');
-        }
-      } else {
-        // No user ID, go directly to payment
-        console.log('No user ID found, going to payment');
-        navigate('/payment');
-      }
-    } else {
-      // Keep original flow: backend Google OAuth redirect
-      window.location.href = 'http://localhost:8000/auth/google';
-    }
+    window.location.href = 'https://buy.stripe.com/test_bJe00jgWO6nW1yv9lWefC01';
   };
 
   const handleHomeClick = () => {

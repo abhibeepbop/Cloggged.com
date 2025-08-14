@@ -24,9 +24,25 @@ export function AccountOverview() {
   useEffect(() => {
     const fetchBillingData = async () => {
       try {
-        // Get user ID from localStorage or context
-        const userData = JSON.parse(localStorage.getItem('userData') || '{}')
-        const userId = userData.uid || 'user_vabhi9920' // fallback for testing
+        // Resolve user id from localStorage, then fallback to /session/me
+        let userId = ''
+        try {
+          const userData = JSON.parse(localStorage.getItem('userData') || '{}')
+          userId = userData.user_id || userData.uid || ''
+        } catch {}
+        if (!userId) {
+          try {
+            const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+            if (me.ok) {
+              const data = await me.json()
+              userId = data?.user_id || ''
+            }
+          } catch {}
+        }
+        if (!userId) {
+          setLoading(false)
+          return
+        }
         
         const response = await fetch(`http://localhost:8000/user/${userId}/billing-data`)
         const result = await response.json()
@@ -83,12 +99,19 @@ export function AccountOverview() {
     return formatDate(defaultNextBilling)
   }
 
+  const nowSec = Math.floor(Date.now() / 1000)
+  const isCancelling = (billingData?.subscription_status === 'cancelling') || (billingData as any)?.cancel_at_period_end === true
+  const inTrial = typeof billingData?.trial_end === 'number' && (billingData!.trial_end > nowSec) && (billingData?.payment_completed !== true)
+  const status = isCancelling ? 'Cancelling' : inTrial ? 'Trial' : (billingData?.subscribed ? 'Active' : 'Inactive')
+  const cancelsAt = (billingData as any)?.cancels_at || billingData?.trial_end || billingData?.next_billing_date
   const subscriptionData = {
-    status: billingData?.subscription_status === 'active' ? 'Trial' : 'Active',
+    status,
     plan: "£5.99/month",
     nextBilling: getNextBillingDate(),
-    trialDaysLeft: calculateDaysLeft(billingData?.trial_end),
-    isActive: billingData?.subscribed || false
+    trialDaysLeft: inTrial ? calculateDaysLeft(billingData?.trial_end) : null,
+    isActive: (billingData?.subscribed || inTrial) && !isCancelling,
+    isCancelling,
+    cancelsAtFormatted: cancelsAt ? new Date(cancelsAt * 1000).toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }) : null
   }
 
   const handleCancelSubscription = async () => {
@@ -99,11 +122,12 @@ export function AccountOverview() {
       
       console.log('Cancelling subscription for user:', userId)
       
-      const response = await fetch(`http://localhost:8000/cancel-subscription/${userId}`, {
+      const response = await fetch('http://localhost:8000/cancel-subscription', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
       })
       
       const result = await response.json()
@@ -158,16 +182,31 @@ export function AccountOverview() {
             </CardHeader>
             <CardContent>
               <div className="space-y-2">
-                <Badge 
-                  variant={subscriptionData.status === "Trial" ? "secondary" : "default"}
-                  className={subscriptionData.status === "Trial" ? "bg-orange-100 text-orange-800" : "bg-green-100 text-green-800"}
-                >
-                  {subscriptionData.status}
-                </Badge>
-                {subscriptionData.trialDaysLeft && (
-                  <p className="text-sm text-muted-foreground">
-                    {subscriptionData.trialDaysLeft} days left in trial
-                  </p>
+                {subscriptionData.status === 'Cancelling' ? (
+                  <>
+                    <Badge className="bg-orange-100 text-orange-800">Cancelling</Badge>
+                    {subscriptionData.cancelsAtFormatted && (
+                      <p className="text-sm text-muted-foreground">Ends on {subscriptionData.cancelsAtFormatted}</p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <Badge 
+                      variant={subscriptionData.status === "Trial" ? "secondary" : (subscriptionData.status === 'Active' ? 'default' : 'outline')}
+                      className={
+                        subscriptionData.status === "Trial" ? "bg-orange-100 text-orange-800" : (
+                          subscriptionData.status === 'Active' ? "bg-green-100 text-green-800" : ""
+                        )
+                      }
+                    >
+                      {subscriptionData.status}
+                    </Badge>
+                    {subscriptionData.trialDaysLeft && (
+                      <p className="text-sm text-muted-foreground">
+                        {subscriptionData.trialDaysLeft} days left in trial
+                      </p>
+                    )}
+                  </>
                 )}
               </div>
             </CardContent>
@@ -206,100 +245,91 @@ export function AccountOverview() {
           </Card>
         </div>
 
-        {/* Account Usage Summary */}
+        {/* Current Subscription (copied from BillingManagement) */}
         <Card className="shadow-sm border-gray-200">
           <CardHeader>
-            <CardTitle className="text-xl font-semibold">Monthly Usage</CardTitle>
+            <CardTitle className="text-xl font-semibold">Current Subscription</CardTitle>
             <CardDescription>
-              Your email processing usage for this billing period
+              Your active subscription details and billing cycle
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Emails Processed</span>
-                <span>2,847 / 10,000</span>
+            <div className="flex justify-between items-center">
+              <div>
+                <h3 className="font-semibold">Premium Plan</h3>
+                <p className="text-sm text-muted-foreground">£5.99/month</p>
               </div>
-              <Progress value={28.47} className="h-2" />
+              <Badge variant="secondary" className={subscriptionData.isCancelling ? "bg-orange-100 text-orange-800" : (subscriptionData.status === 'Active' ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800") }>
+                {subscriptionData.isCancelling ? 'Cancelling' : subscriptionData.status}
+              </Badge>
             </div>
             
             <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>AI Categorizations</span>
-                <span>2,654 / 10,000</span>
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Free Trial Ends</span>
+                <span className="text-sm text-muted-foreground">{subscriptionData.trialDaysLeft ? formatDate(billingData?.trial_end) : 'N/A'}</span>
               </div>
-              <Progress value={26.54} className="h-2" />
-            </div>
-            
-            <div className="space-y-2">
-              <div className="flex justify-between text-sm">
-                <span>Spam Filtered</span>
-                <span>193 emails blocked</span>
-              </div>
-              <div className="text-sm text-muted-foreground">
-                6.8% of total emails were spam
+              <div className="flex justify-between items-center">
+                <span className="text-sm">Next Billing</span>
+                <span className="text-sm text-muted-foreground">{getNextBillingDate()}</span>
               </div>
             </div>
+
+            {/* Move Cancel Subscription action here */}
+            {!subscriptionData.isCancelling && (subscriptionData.status === 'Active' || subscriptionData.status === 'Trial') && (
+              <div className="flex space-x-2 pt-2">
+                <AlertDialog>
+                  <AlertDialogTrigger asChild>
+                    <Button 
+                      variant="destructive" 
+                      size="sm"
+                      disabled={cancelling}
+                    >
+                      {cancelling ? 'Cancelling...' : 'Cancel Subscription'}
+                    </Button>
+                  </AlertDialogTrigger>
+                  <AlertDialogContent>
+                    <AlertDialogHeader>
+                      <AlertDialogTitle className="flex items-center gap-2">
+                        <AlertTriangle className="h-5 w-5 text-destructive" />
+                        Cancel Subscription
+                      </AlertDialogTitle>
+                      <AlertDialogDescription>
+                        Are you sure you want to cancel your subscription? You'll continue to have access until {getNextBillingDate()}, but your subscription will not renew.
+                      </AlertDialogDescription>
+                    </AlertDialogHeader>
+                    <AlertDialogFooter>
+                      <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
+                      <AlertDialogAction 
+                        onClick={handleCancelSubscription}
+                        className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                      >
+                        Yes, Cancel Subscription
+                      </AlertDialogAction>
+                    </AlertDialogFooter>
+                  </AlertDialogContent>
+                </AlertDialog>
+              </div>
+            )}
           </CardContent>
         </Card>
 
-        {/* Cancel Subscription */}
-        <Card className="shadow-sm border-red-200">
+        {/* Billing History (summary) */}
+        <Card className="shadow-sm border-gray-200">
           <CardHeader>
-            <CardTitle className="text-xl font-semibold text-red-600">Cancel Subscription</CardTitle>
+            <CardTitle className="text-xl font-semibold">Billing History</CardTitle>
             <CardDescription>
-              Cancel your subscription and stop future billing
+              Your recent invoices and payment history
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="p-4 bg-red-50 border border-red-200 rounded-lg">
-              <div className="flex items-start space-x-3">
-                <AlertTriangle className="h-5 w-5 text-red-600 mt-0.5" />
-                <div className="space-y-2">
-                  <h4 className="font-medium text-red-800">Important Information</h4>
-                  <ul className="text-sm text-red-700 space-y-1">
-                    <li>• You'll continue to have access until the end of your current billing period</li>
-                    <li>• No refunds will be issued for the current period</li>
-                    <li>• You can reactivate your subscription at any time</li>
-                    <li>• Your email processing will stop after the current period ends</li>
-                  </ul>
-                </div>
-              </div>
-            </div>
-            
-            <AlertDialog>
-              <AlertDialogTrigger asChild>
-                <Button 
-                  variant="destructive" 
-                  className="w-full"
-                  disabled={cancelling}
-                >
-                  {cancelling ? 'Cancelling...' : 'Cancel Subscription'}
-                </Button>
-              </AlertDialogTrigger>
-              <AlertDialogContent>
-                <AlertDialogHeader>
-                  <AlertDialogTitle className="flex items-center gap-2">
-                    <AlertTriangle className="h-5 w-5 text-destructive" />
-                    Cancel Subscription
-                  </AlertDialogTitle>
-                  <AlertDialogDescription>
-                    Are you sure you want to cancel your subscription? You'll continue to have access until {subscriptionData.nextBilling}, but your subscription will not renew.
-                  </AlertDialogDescription>
-                </AlertDialogHeader>
-                <AlertDialogFooter>
-                  <AlertDialogCancel>Keep Subscription</AlertDialogCancel>
-                  <AlertDialogAction 
-                    onClick={handleCancelSubscription}
-                    className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  >
-                    Yes, Cancel Subscription
-                  </AlertDialogAction>
-                </AlertDialogFooter>
-              </AlertDialogContent>
-            </AlertDialog>
+          <CardContent>
+            <div className="text-sm text-muted-foreground">View full details in the Billing tab.</div>
           </CardContent>
         </Card>
+
+        
+
+        {/* Cancel Subscription moved into Current Subscription card above */}
         </>
       )}
     </div>

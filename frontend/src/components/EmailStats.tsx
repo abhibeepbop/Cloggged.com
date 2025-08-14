@@ -30,12 +30,26 @@ export function EmailStats() {
   useEffect(() => {
     const fetchEmailStats = async () => {
       try {
-        // Get user ID from localStorage or context
-        const userData = JSON.parse(localStorage.getItem('userData') || '{}')
-        const userId = userData.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2' // fallback for testing
-        
-        console.log('EmailStats - User ID:', userId)
-        console.log('EmailStats - User Data:', userData)
+        // Get user ID from localStorage first, then fallback to /session/me
+        let userId = ''
+        try {
+          const ls = JSON.parse(localStorage.getItem('userData') || '{}')
+          userId = ls.user_id || ls.uid || ''
+        } catch {}
+        if (!userId) {
+          try {
+            const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+            if (me.ok) {
+              const data = await me.json()
+              userId = data?.user_id || ''
+            }
+          } catch {}
+        }
+        if (!userId) {
+          setLoading(false)
+          return
+        }
+        // console.log('EmailStats - User ID:', userId)
         
         const response = await fetch(`http://localhost:8000/user/${userId}/email-stats`)
         const result = await response.json()

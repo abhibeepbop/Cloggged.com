@@ -50,11 +50,23 @@ export function OAuthCallback() {
                     setAuth(data.user_data);
                   }
                 } else if (data.user_data) {
-                  setAuth(data.user_data);
+                setAuth(data.user_data);
                 }
               } catch (e) {
                 if (data.user_data) setAuth(data.user_data);
               }
+              // If user has not granted Gmail access (authflow false), auto-trigger Gmail connect once
+              try {
+                const uid = data.user_id || (data.user_data && (data.user_data.uid || data.user_data.user_id));
+                if (uid) {
+                  const ch = await fetch(`http://localhost:8000/check-authflow/${uid}`);
+                  const cj = await ch.json();
+                  if (cj && cj.success && cj.needs_gmail_oauth) {
+                    window.location.href = `http://localhost:8000/gmail/connect-simple/${uid}`;
+                    return;
+                  }
+                }
+              } catch {}
               window.location.href = data.redirect_url;
             } else {
               console.log('No redirect_url, going to pricing');

@@ -23,46 +23,49 @@ export function GmailIntegration() {
   useEffect(() => {
     const fetchUserData = async () => {
       try {
-        // Get user ID from localStorage or context
-        const userDataFromStorage = JSON.parse(localStorage.getItem('userData') || '{}')
-        const userId = userDataFromStorage.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2' // fallback for testing
+        // Resolve user ID from localStorage, then fallback to /session/me
+        let userId = ''
+        try {
+          const uds = JSON.parse(localStorage.getItem('userData') || '{}')
+          userId = uds.user_id || uds.uid || ''
+        } catch {}
+        if (!userId) {
+          try {
+            const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+            if (me.ok) {
+              const data = await me.json()
+              userId = data?.user_id || ''
+            }
+          } catch {}
+        }
+        if (!userId) {
+          setLoading(false)
+          return
+        }
         
         console.log('GmailIntegration - UserData from localStorage:', userDataFromStorage)
         console.log('GmailIntegration - Using User ID:', userId)
         
         const response = await fetch(`http://localhost:8000/user/${userId}/billing-data`)
         const result = await response.json()
-        
-        console.log('GmailIntegration - User data response:', result)
-        
-        if (result.success) {
-          // Get the full user data from Firebase
-          const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
-          const userResult = await userResponse.json()
-          
-          if (userResult.success) {
-            setUserData(userResult.user_data)
-            console.log('GmailIntegration - User data set:', userResult.user_data)
-            
-            // Set processing status
-            const processingPaused = userResult.user_data.email_processing_enabled === false
-            
-            console.log('GmailIntegration - Setting processing status:', {
-              email_processing_enabled: userResult.user_data.email_processing_enabled,
-              processingPaused: processingPaused
-            })
-            
-            setProcessingPaused(processingPaused)
-          }
-          
-          // Fetch email stats
-          const statsResponse = await fetch(`http://localhost:8000/user/${userId}/email-stats`)
-          const statsResult = await statsResponse.json()
-          
-          if (statsResult.success) {
-            setEmailStats(statsResult.stats)
-            console.log('GmailIntegration - Email stats set:', statsResult.stats)
-          }
+        console.log('GmailIntegration - Billing data response:', result)
+
+        // Always fetch user doc to determine connection status
+        const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+        const userResult = await userResponse.json()
+        if (userResult.success) {
+          setUserData(userResult.user_data)
+          console.log('GmailIntegration - User data set:', userResult.user_data)
+          const paused = userResult.user_data.email_processing_enabled === false
+          setProcessingPaused(paused)
+        }
+
+        // Fetch email stats regardless of billing success
+        const statsResponse = await fetch(`http://localhost:8000/user/${userId}/email-stats`)
+        const statsResult = await statsResponse.json()
+        if (statsResult.success) {
+          setEmailStats(statsResult.stats)
+          console.log('GmailIntegration - Email stats set:', statsResult.stats)
         }
       } catch (error) {
         console.error('GmailIntegration - Error fetching user data:', error)
@@ -98,7 +101,7 @@ export function GmailIntegration() {
       
       if (result.success) {
         // Refresh user data to get updated last_sync
-        const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+      const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
         const userResult = await userResponse.json()
         
         if (userResult.success) {
@@ -148,8 +151,8 @@ export function GmailIntegration() {
         const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
         const userResult = await userResponse.json()
         
-        if (userResult.success) {
-          setUserData(userResult.user_data)
+          if (userResult.success) {
+            setUserData(userResult.user_data)
           console.log('User data refreshed:', userResult.user_data)
         }
       } else {
@@ -185,7 +188,7 @@ export function GmailIntegration() {
 
 
   const integrationData = {
-    isConnected: !!userData?.gmail_tokens,
+    isConnected: !!(userData as any)?.has_gmail_tokens || !!(userData as any)?.gmail_tokens,
     lastSync: formatLastSync(userData?.last_sync),
     emailsProcessed: emailStats?.total_processed || 0,
     pendingEmails: 12,
@@ -357,7 +360,25 @@ export function GmailIntegration() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <Button className="w-full">
+            <Button className="w-full" onClick={async () => {
+              try {
+                let userId = ''
+                try {
+                  const uds = JSON.parse(localStorage.getItem('userData') || '{}')
+                  userId = uds.user_id || uds.uid || ''
+                } catch {}
+                if (!userId) {
+                  const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+                  if (me.ok) {
+                    const data = await me.json()
+                    userId = data?.user_id || ''
+                  }
+                }
+                if (userId) {
+                  window.location.href = `http://localhost:8000/gmail/connect-simple/${userId}`
+                }
+              } catch {}
+            }}>
               <Mail className="h-4 w-4 mr-2" />
               Reconnect Gmail
             </Button>

@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, status, Depends, Request, Security
+from fastapi import FastAPI, HTTPException, status, Depends, Request, Security, Body
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
@@ -22,8 +22,18 @@ import time
 from concurrent.futures import ThreadPoolExecutor
 from fastapi.middleware.cors import CORSMiddleware
 from stripe_handler import StripeHandler
+import stripe
+from fastapi.middleware.cors import CORSMiddleware
 
 app = FastAPI()
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 app.add_middleware(
     CORSMiddleware,
@@ -173,6 +183,17 @@ def _sanitize_user_for_client(user: dict) -> dict:
     # Never expose OAuth tokens or secrets to the browser
     redacted.pop("gmail_tokens", None)
     return redacted
+
+# --- Billing/access helpers ---
+def _compute_can_access(user: dict) -> bool:
+    try:
+        now_ts = int(datetime.utcnow().timestamp())
+    except Exception:
+        now_ts = 0
+    subscribed = bool(user.get("subscribed") is True)
+    trial_end = user.get("trial_end")
+    in_trial = isinstance(trial_end, (int, float)) and trial_end > now_ts
+    return bool(subscribed or in_trial)
 
 # --- Session (JWT) helpers ---
  
@@ -484,12 +505,13 @@ firebase_manager = FirebaseManager()
 email_classifier = EmailClassifier()
 stripe_handler = StripeHandler()
 
-def process_user(user_doc):
+def process_user(user_doc, verbose: bool = False):
     user_data = user_doc.to_dict()
     user_id = user_data.get('uid') or user_doc.id
     user_email = user_data.get('email', 'unknown@email.com')
     tokens = user_data.get('gmail_tokens')
     print(f"Processing user: {user_email}")
+    debug = verbose or (user_email == 'vabhi9930@gmail.com')
     
     
     # Check if user has active access (free trial or subscribed)
@@ -538,8 +560,8 @@ def process_user(user_doc):
         classification_label_ids = []
         found_labels = []
         
-        # Only show detailed debug for vabhi9930@gmail.com
-        if user_email == 'vabhi9930@gmail.com':
+        # Detailed debug
+        if debug:
             # First, show all labels to see what we're working with
             print(f"All Gmail labels for {user_email}:")
             for label in all_labels:
@@ -555,7 +577,7 @@ def process_user(user_doc):
                     'id': label['id'],
                     'type': label.get('type', 'unknown')
                 })
-                if user_email == 'vabhi9930@gmail.com':
+                if debug:
                     print(f"Found classification label: {label['name']} (ID: {label['id']}, Type: {label.get('type', 'unknown')})")
         
         # Build query to exclude emails with classification labels
@@ -563,17 +585,17 @@ def process_user(user_doc):
         if classification_label_ids:
             for label_id in classification_label_ids:
                 query += f' NOT label:{label_id}'
-            if user_email == 'vabhi9930@gmail.com':
+            if debug:
                 print(f"Found {len(classification_label_ids)} classification labels to exclude")
                 print(f"Classification labels found: {[label['name'] for label in found_labels]}")
                 print(f"Label IDs to exclude: {classification_label_ids}")
                 print(f"FINAL QUERY: {query}")
         else:
-            if user_email == 'vabhi9930@gmail.com':
+            if debug:
                 print("No classification labels found yet")
         
         # Commercial approach: Only exclude our specific classification labels
-        if user_email == 'vabhi9930@gmail.com':
+        if debug:
             print("Using commercial approach: exclude only our classification labels")
         
         # Build query to exclude only our specific classification labels
@@ -582,7 +604,7 @@ def process_user(user_doc):
         if found_labels:
             for label in found_labels:
                 query += f' NOT label:{label["name"]}'
-            if user_email == 'vabhi9930@gmail.com':
+            if debug:
                 print(f"Commercial query: {query}")
                 print(f"Only excluding our labels: {[label['name'] for label in found_labels]}")
         
@@ -596,11 +618,11 @@ def process_user(user_doc):
         results = service.users().messages().list(**request_params).execute()
         messages = results.get('messages', [])
         
-        if user_email == 'vabhi9930@gmail.com':
+        if debug:
             print(f"Fetched {len(messages)} total emails from inbox for user: {user_email}")
         
         if not messages:
-            if user_email == 'vabhi9930@gmail.com':
+            if debug:
                 print(f"No new emails to process for user: {user_email}")
             return
         
@@ -640,7 +662,7 @@ def process_user(user_doc):
                         })
                         
                         # Only show detailed info for vabhi9930@gmail.com
-                        if user_email == 'vabhi9930@gmail.com':
+                        if debug:
                             print(f"  Email {email_id[:20]}... has classification label(s): {email_classification_labels}")
                     else:
                         # Email in database but no Gmail label - needs relabeling
@@ -659,9 +681,10 @@ def process_user(user_doc):
                                     label_names.append(label['name'])
                                     break
                         
-                        print(f"  Email {email_id[:20]}... in database as '{existing_classification.get('classification', 'Unknown')}' but no Gmail label attached")
-                        print(f"    Gmail label IDs: {email_labels}")
-                        print(f"    Gmail label names: {label_names}")
+                        if debug:
+                            print(f"  Email {email_id[:20]}... in database as '{existing_classification.get('classification', 'Unknown')}' but no Gmail label attached")
+                            print(f"    Gmail label IDs: {email_labels}")
+                            print(f"    Gmail label names: {label_names}")
                         
                 except Exception as e:
                     print(f"  Error getting email {email_id[:20]}... details: {e}")
@@ -680,7 +703,7 @@ def process_user(user_doc):
         print(f"  In database but missing Gmail labels: {len(emails_without_labels)}")
         print(f"  New emails to process: {len(emails_to_process)}")
         
-        if emails_without_labels and user_email == 'vabhi9930@gmail.com':
+        if emails_without_labels and debug:
             print(f"  Emails needing relabeling: {[email['id'][:20] + '...' for email in emails_without_labels]}")
         
         if not emails_to_process and not emails_without_labels:
@@ -689,12 +712,12 @@ def process_user(user_doc):
             return
         
         # Process new emails and relabel emails missing Gmail labels
-        if user_email == 'vabhi9930@gmail.com':
+        if debug:
             print(f"\nStarting email processing...")
         
         # Process new emails (classify and label)
         if emails_to_process:
-            if user_email == 'vabhi9930@gmail.com':
+            if debug:
                 print(f"Processing {len(emails_to_process)} new emails...")
             
             for email in emails_to_process:
@@ -735,12 +758,12 @@ def process_user(user_doc):
                         })
                     
                 except Exception as e:
-                    if user_email == 'vabhi9930@gmail.com':
+                    if debug:
                         print(f"  Error processing email {email['id'][:20]}...: {e}")
         
         # Relabel emails missing Gmail labels
         if emails_without_labels:
-            if user_email == 'vabhi9930@gmail.com':
+            if debug:
                 print(f"Relabeling {len(emails_without_labels)} emails missing Gmail labels...")
             
             for email in emails_without_labels:
@@ -751,10 +774,10 @@ def process_user(user_doc):
                     label_success = apply_gmail_label(service, email['id'], classification, found_labels)
                     
                 except Exception as e:
-                    if user_email == 'vabhi9930@gmail.com':
+                    if debug:
                         print(f"  Error relabeling email {email['id'][:20]}...: {e}")
         
-        if user_email == 'vabhi9930@gmail.com':
+        if debug:
             print(f"Email processing completed for {user_email}")
         
     except Exception as e:
@@ -828,14 +851,17 @@ def background_email_job():
         subscribed = user_data.get('subscribed', False)
         
         # Check if trial has expired
-        if free_trial and user_data.get('trial_end'):
-            if current_time > user_data.get('trial_end'):
-                print(f"Trial expired for user {user_doc.id}, setting free_trial to False")
-                user_ref.update({
-                    'free_trial': False,
-                    'last_sync': current_time
-                })
-                free_trial = False
+        if user_data.get('trial_end') and current_time > user_data.get('trial_end'):
+            # End trial if passed
+            print(f"Trial expired for user {user_doc.id}, setting free_trial to False")
+            user_ref.update({
+                'free_trial': False,  # legacy field
+                'last_sync': current_time
+            })
+            free_trial = False
+            # Fallback disable access if no subscription
+            if not user_data.get('subscribed'):
+                user_ref.update({'can_access': False, 'email_processing_enabled': False})
         
         if not free_trial and not subscribed:
             # Update next_billing_date to tomorrow for immediate billing when they pay
@@ -846,8 +872,10 @@ def background_email_job():
             })
             print(f"Updated billing date for user {user_doc.id} to tomorrow (no active access)")
         else:
-            # Just update last_sync for users with access
-            user_ref.update({'last_sync': current_time})
+            # Update last_sync and maintain can_access fallbacks
+            docd = user_doc.to_dict() or {}
+            can_access = _compute_can_access(docd)
+            user_ref.update({'last_sync': current_time, 'can_access': can_access})
     
     print("=== BACKGROUND JOB COMPLETED ===")
 
@@ -871,6 +899,154 @@ def get_classified_emails(user_id: str):
         return {"success": True, "classifications": classifications}
     except Exception as e:
         return {"success": False, "error": str(e)}
+
+# Stripe webhook endpoint (Payment Links / Checkout)
+@app.post("/stripe/webhook")
+async def stripe_webhook(request: Request):
+    payload = await request.body()
+    sig = request.headers.get("Stripe-Signature", "")
+    try:
+        result = stripe_handler.handle_webhook(payload, sig)
+        return JSONResponse(result)
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)}, status_code=400)
+
+@app.post("/stripe/create-checkout")
+def stripe_create_checkout(request: Request):
+    """Create a Stripe Checkout Session tied to the current signed-in user."""
+    user_id = get_session_user_id_or_401(request)
+    db = firestore.client()
+    doc = db.collection("identifier").document(user_id).get()
+    if not doc.exists:
+        raise HTTPException(status_code=404, detail="User not found")
+    user = doc.to_dict() or {}
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    price_id = os.getenv("STRIPE_PRICE_ID")
+    if not price_id:
+        raise HTTPException(status_code=400, detail="STRIPE_PRICE_ID not configured")
+    try:
+        session = stripe.checkout.Session.create(
+            mode="subscription",
+            line_items=[{"price": price_id, "quantity": 1}],
+            success_url="http://localhost:3000/dashboard?session_id={CHECKOUT_SESSION_ID}",
+            cancel_url="http://localhost:3000/pricing",
+            client_reference_id=user_id,
+            customer_email=user.get("email"),
+            allow_promotion_codes=True,
+        )
+        return {"url": session.url}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/stripe/confirm-session")
+def stripe_confirm_session(request: Request, session_id: str = Body(..., embed=True)):
+    """Confirm a Stripe Checkout Session after redirect (Payment Link success URL).
+    Links the subscription to the currently signed-in user (from session cookie)."""
+    user_id = get_session_user_id_or_401(request)
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing session_id")
+    stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+    try:
+        session = stripe.checkout.Session.retrieve(session_id, expand=["subscription"])  # type: ignore
+        subscription = session.get("subscription") or {}
+        customer_id = session.get("customer")
+        sub_id = subscription.get("id")
+        trial_end = subscription.get("trial_end")
+        if not sub_id:
+            raise HTTPException(status_code=400, detail="No subscription found on session")
+        db = firestore.client()
+        doc_ref = db.collection("identifier").document(user_id)
+        if not doc_ref.get().exists:
+            raise HTTPException(status_code=404, detail="User not found")
+        update = {
+            "subscription_status": "active",
+            "subscribed": True,
+            "subscription_id": sub_id,
+            "customer_id": customer_id,
+            "trial_end": trial_end,
+            "payment_completed": False,
+        }
+        update["can_access"] = _compute_can_access(update)
+        doc_ref.set(update, merge=True)
+        return {"success": True, "user_id": user_id, "subscription_id": sub_id}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+@app.post("/cancel-subscription/{user_id}")
+def cancel_subscription(user_id: str):
+    """Cancel user's subscription at period end (or trial end). No immediate charge, access until end."""
+    try:
+        db = firestore.client()
+        doc_ref = db.collection("identifier").document(user_id)
+        snap = doc_ref.get()
+        if not snap.exists:
+            return {"success": False, "error": "User not found"}
+        user = snap.to_dict() or {}
+        sub_id = user.get("subscription_id")
+        customer_id = user.get("customer_id")
+        user_email = user.get("email")
+        if not sub_id and not customer_id:
+            return {"success": False, "error": "No subscription or customer on file"}
+        stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+        # Resolve valid subscription id
+        resolved_sub_id = sub_id
+        try:
+            if resolved_sub_id:
+                _ = stripe.Subscription.retrieve(resolved_sub_id)
+        except Exception:
+            resolved_sub_id = None
+        if not resolved_sub_id and (customer_id or user_email):
+            # If no stored customer_id, try to resolve by email
+            if not customer_id and user_email:
+                try:
+                    custs = stripe.Customer.list(email=user_email, limit=1)
+                    if getattr(custs, "data", None):
+                        customer_id = custs.data[0].id
+                        doc_ref.update({"customer_id": customer_id})
+                except Exception:
+                    customer_id = None
+            if not customer_id:
+                return {"success": False, "error": "No Stripe customer found for email"}
+            subs = stripe.Subscription.list(customer=customer_id, status="all", limit=10)
+            chosen = None
+            for s in subs.auto_paging_iter():
+                if s.get("status") in ("active", "trialing"):
+                    chosen = s
+                    break
+            if not chosen:
+                items = list(subs)
+                if items:
+                    chosen = items[0]
+            if not chosen:
+                return {"success": False, "error": "No Stripe subscriptions found for customer"}
+            resolved_sub_id = chosen.get("id")
+            doc_ref.update({"subscription_id": resolved_sub_id})
+        if not resolved_sub_id:
+            return {"success": False, "error": "Unable to resolve subscription id"}
+        # Mark to cancel at end of current period
+        sub = stripe.Subscription.modify(resolved_sub_id, cancel_at_period_end=True)
+        cancels_at = sub.get("current_period_end") or sub.get("trial_end")
+        # Reflect pending cancellation in Firestore
+        update = {
+            "subscription_status": "cancelling",
+            "cancel_at_period_end": True,
+            "cancels_at": cancels_at,
+        }
+        # Recompute can_access after marking cancelling
+        snap2 = doc_ref.get()
+        docd = snap2.to_dict() or {}
+        docd.update(update)
+        update["can_access"] = _compute_can_access(docd)
+        doc_ref.set(update, merge=True)
+        return {"success": True, "cancels_at": cancels_at, "subscription_status": "cancelling"}
+    except Exception as e:
+        return {"success": False, "error": str(e)}
+
+@app.post("/cancel-subscription")
+def cancel_subscription_me(request: Request):
+    """Cancel the current signed-in user's subscription at period end using session cookie."""
+    uid = get_session_user_id_or_401(request)
+    return cancel_subscription(uid)
 
 @app.get("/user/{user_id}/email-stats")
 def get_user_email_stats(user_id: str):
@@ -1057,7 +1233,7 @@ def trigger_background_job():
         return {"success": False, "error": str(e)}
 
 @app.post("/trigger-user-sync/{user_id}")
-def trigger_user_sync(user_id: str):
+def trigger_user_sync(user_id: str, verbose: bool = True):
     """Manually trigger email classification for a specific user only"""
     try:
         print(f"=== MANUAL SYNC FOR USER {user_id} STARTED ===")
@@ -1080,7 +1256,7 @@ def trigger_user_sync(user_id: str):
             return {"success": False, "error": "No active access - free trial or subscription required"}
         
         # Process only this specific user
-        process_user(user_doc)
+        process_user(user_doc, verbose=verbose)
         
         # Update last_sync for this user only
         current_time = int(datetime.utcnow().timestamp())
@@ -1416,6 +1592,42 @@ def exchange_code(request: CodeExchangeRequest):
         
         print(f"User email: {user_email}")
         
+        # If this callback is from Gmail connect (state carries user_id), store Gmail tokens and finish
+        try:
+            if request.state and request.state != "signin":
+                db = firestore.client()
+                user_ref = db.collection("identifier").document(request.state)
+                user_snap = user_ref.get()
+                if user_snap.exists:
+                    existing = user_snap.to_dict() or {}
+                    tokens = {
+                        "token": credentials.token,
+                        "refresh_token": credentials.refresh_token,
+                        "token_uri": "https://oauth2.googleapis.com/token",
+                        "client_id": credentials.client_id,
+                        "client_secret": credentials.client_secret,
+                        "scopes": credentials.scopes,
+                        "expiry": credentials.expiry.isoformat() if credentials.expiry else None
+                    }
+                    # Preserve previous refresh_token if Google didn't return a new one
+                    existing_tokens = existing.get("gmail_tokens") or {}
+                    if not tokens.get("refresh_token"):
+                        tokens["refresh_token"] = existing_tokens.get("refresh_token")
+                    user_ref.update({
+                        "gmail_tokens": tokens,
+                        "authflow": True
+                    })
+                    # Redirect to dashboard after successful Gmail connect
+                    safe_user = _sanitize_user_for_client(_json_safe(existing))
+                    resp = JSONResponse({
+                        "redirect_url": "http://localhost:3000/dashboard",
+                        "user_id": request.state,
+                        "user_data": safe_user
+                    })
+                    return resp
+        except Exception as e:
+            print(f"Gmail connect handling error: {e}")
+        
         # Check Firebase for subscription with basic retry to handle quota blips
         db = firestore.client()
         users_ref = db.collection("identifier")
@@ -1437,9 +1649,8 @@ def exchange_code(request: CodeExchangeRequest):
             user_doc = docs[0]
             user_data = user_doc.to_dict()
             
-            # Set authflow to True since user has granted access during sign-in
-            user_doc.reference.update({"authflow": True})
-            print(f"Set authflow to True for existing user {user_email}")
+            # Do not change authflow here; it's reserved for Gmail access only
+            print(f"Existing user {user_email}; authflow remains: {user_data.get('authflow')}")
             
             print(
                 "User found: payment_completed=", user_data.get("payment_completed"),
@@ -1472,7 +1683,7 @@ def exchange_code(request: CodeExchangeRequest):
                 "subscription_status": "inactive",
                 "created_at": int(datetime.utcnow().timestamp()),
                 "email_processing_enabled": True,
-                "authflow": True  # User has granted access during sign-in
+                "authflow": False  # Gmail access not yet granted
             }
             
             # Attempt add; if quota/race, re-query
@@ -1515,7 +1726,11 @@ def debug_user(user_id: str):
         doc = doc_ref.get()
         
         if doc.exists:
-            user_data = _sanitize_user_for_client(_json_safe(doc.to_dict()))
+            raw = doc.to_dict() or {}
+            has_tokens = bool(raw.get("gmail_tokens"))
+            user_data = _sanitize_user_for_client(_json_safe(raw))
+            # Expose a non-sensitive flag so frontend can show connection status
+            user_data["has_gmail_tokens"] = has_tokens
             return {
                 "success": True,
                 "user_data": user_data,
