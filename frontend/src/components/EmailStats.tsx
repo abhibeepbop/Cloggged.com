@@ -111,6 +111,12 @@ export function EmailStats() {
 
   const { total_processed, spam_count, accuracy, top_category, category_breakdown, weekly_data, date_range } = statsData
 
+  // Prepare chart data with explicit non-spam series
+  const chartData = weekly_data.map(d => ({
+    ...d,
+    nonSpam: Math.max((d.processed || 0) - (d.spam || 0), 0),
+  }))
+
   return (
     <div className="space-y-8">
       <div className="space-y-2">
@@ -226,18 +232,18 @@ export function EmailStats() {
           <CardContent>
             <div className="h-80">
               <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={weekly_data}>
+                <BarChart data={chartData}>
                   <CartesianGrid strokeDasharray="3 3" />
                   <XAxis dataKey="day" />
                   <YAxis />
                   <Tooltip 
-                    formatter={(value, name) => [value, name === 'processed' ? 'Processed' : 'Spam']}
+                    formatter={(value: any, name: string, props: any) => [value, props?.dataKey === 'nonSpam' ? 'Non-Spam' : 'Spam']}
                     labelFormatter={(label) => {
-                      const dayData = weekly_data.find(d => d.day === label)
+                      const dayData = chartData.find(d => d.day === label)
                       return dayData ? `${label} (${dayData.date})` : label
                     }}
                   />
-                  <Bar dataKey="processed" fill="#8B5CF6" name="Processed" />
+                  <Bar dataKey="nonSpam" fill="#8B5CF6" name="Non-Spam" />
                   <Bar dataKey="spam" fill="#EF4444" name="Spam" />
                 </BarChart>
               </ResponsiveContainer>

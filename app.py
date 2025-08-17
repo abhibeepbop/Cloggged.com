@@ -24,6 +24,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from stripe_handler import StripeHandler
 import stripe
 from fastapi.middleware.cors import CORSMiddleware
+from google.cloud import firestore as gcf
 
 app = FastAPI()
 
@@ -198,6 +199,79 @@ def _compute_can_access(user: dict) -> bool:
 # --- Session (JWT) helpers ---
  
 
+
+def _normalize_category(raw_category: str) -> str:
+    if not raw_category:
+        return "Other"
+    c = str(raw_category).strip().lower()
+    if c in ['spam', 'not_spam', 'notspam']:
+        return 'Spam'
+    if c in ['work', 'professional', 'business']:
+        return 'Work'
+    if c in ['finance', 'financial', 'banking']:
+        return 'Finance'
+    if c in ['security', 'secure', 'account']:
+        return 'Security'
+    if c in ['otps', 'otp', 'verification', 'code']:
+        return 'OTPs'
+    if c in ['family', 'personal', 'friends']:
+        return 'Family'
+    if c in ['urgent', 'important', 'priority']:
+        return 'Urgent'
+    return 'Other'
+
+
+def _update_user_stats_on_classification(user_id: str, classification: str, ts_seconds: int) -> None:
+    try:
+        db = firestore.client()
+        stats_ref = db.collection('identifier').document(user_id).collection('meta').document('stats')
+        from datetime import datetime as _dt
+        date_key = _dt.utcfromtimestamp(ts_seconds).strftime('%Y-%m-%d')
+        category = _normalize_category(classification)
+        updates = {
+            'total_processed': gcf.Increment(1),
+            f'category_counts.{category}': gcf.Increment(1),
+            f'daily.{date_key}.processed': gcf.Increment(1),
+            'updated_at': ts_seconds,
+        }
+        if category == 'Spam':
+            updates[f'daily.{date_key}.spam'] = gcf.Increment(1)
+        stats_ref.set(updates, merge=True)
+    except Exception as _:
+        # Non-fatal; classification persists even if stats update fails
+        pass
+
+
+def _get_env_int(name: str, default_value: int) -> int:
+    try:
+        return int(os.getenv(name, str(default_value)))
+    except Exception:
+        return default_value
+
+
+def _get_monthly_processed_count(user_id: str) -> int:
+    """Sum processed counts for the current calendar month from the aggregated stats doc."""
+    try:
+        db = firestore.client()
+        stats_ref = db.collection('identifier').document(user_id).collection('meta').document('stats')
+        snap = stats_ref.get()
+        if not snap.exists:
+            return 0
+        stats = snap.to_dict() or {}
+        daily = stats.get('daily') or {}
+        from datetime import datetime as _dt
+        now = _dt.utcnow()
+        month_prefix = now.strftime('%Y-%m-')  # e.g., 2025-08-
+        total = 0
+        for day_key, entry in daily.items():
+            try:
+                if str(day_key).startswith(month_prefix):
+                    total += int((entry or {}).get('processed') or 0)
+            except Exception:
+                continue
+        return total
+    except Exception:
+        return 0
 
 @app.get("/")
 def read_root(code: str = None, state: str = None):
@@ -608,10 +682,20 @@ def process_user(user_doc, verbose: bool = False):
                 print(f"Commercial query: {query}")
                 print(f"Only excluding our labels: {[label['name'] for label in found_labels]}")
         
+        # Enforce monthly cap: stop processing if user exceeded 10,000 emails this month
+        monthly_cap = _get_env_int("MONTHLY_EMAIL_CAP", 10000)
+        processed_this_month = _get_monthly_processed_count(user_id)
+        remaining_quota = max(monthly_cap - processed_this_month, 0)
+        if remaining_quota <= 0:
+            print(f"Monthly cap reached for {user_email} (cap={monthly_cap}), skipping.")
+            return
+
         # Fetch emails excluding only our classification labels
+        # Cap fetch per run to avoid spikes; do not exceed remaining monthly quota
+        per_run_limit = min(50, remaining_quota)
         request_params = {
             'userId': 'me',
-            'maxResults': 50,
+            'maxResults': per_run_limit,
             'q': query
         }
         
@@ -756,6 +840,14 @@ def process_user(user_doc, verbose: bool = False):
                         doc_ref.update({
                             'timestamp': int(datetime.utcnow().timestamp())
                         })
+                        try:
+                            _update_user_stats_on_classification(
+                                user_id=user_id,
+                                classification=classification,
+                                ts_seconds=int(datetime.utcnow().timestamp()),
+                            )
+                        except Exception:
+                            pass
                     
                 except Exception as e:
                     if debug:
@@ -786,7 +878,9 @@ def process_user(user_doc, verbose: bool = False):
         traceback.print_exc()
 
 def apply_gmail_label(service, email_id, classification, found_labels):
-    """Apply Gmail label to email based on classification"""
+    """Apply Gmail label to email based on classification.
+    Uses get_or_create_label() to handle name mappings (e.g., OTPs -> OTP) and create if missing.
+    """
     try:
         # Handle spam emails - move to spam folder
         if classification.lower() == 'spam':
@@ -794,39 +888,29 @@ def apply_gmail_label(service, email_id, classification, found_labels):
                 'addLabelIds': ['SPAM'],
                 'removeLabelIds': ['INBOX']
             }
-            
-            service.users().messages().modify(
-                userId='me',
-                id=email_id,
-                body=modify_body
-            ).execute()
-            
+            service.users().messages().modify(userId='me', id=email_id, body=modify_body).execute()
             return True
-        
-        # Handle other classifications - apply user labels
-        label_id = None
-        for label in found_labels:
-            if label['name'] == classification:
-                label_id = label['id']
-                break
-        
-        if not label_id:
-            print(f"  No label found for classification: {classification}")
-            return False
-        
+
+        # Resolve/create proper Gmail label ID for this classification
+        try:
+            label_id = get_or_create_label(service, classification)
+        except Exception as _e:
+            # Fallback: try found_labels with simple mapping comparison
+            mapped_name = {'OTPs': 'OTP'}.get(classification, classification)
+            label_id = None
+            for label in found_labels:
+                if str(label.get('name', '')).lower() == str(mapped_name).lower():
+                    label_id = label.get('id')
+                    break
+            if not label_id:
+                print(f"  No label found for classification: {classification}")
+                return False
+
         # Apply the label
-        modify_body = {
-            'addLabelIds': [label_id]
-        }
-        
-        service.users().messages().modify(
-            userId='me',
-            id=email_id,
-            body=modify_body
-        ).execute()
-        
+        modify_body = { 'addLabelIds': [label_id] }
+        service.users().messages().modify(userId='me', id=email_id, body=modify_body).execute()
         return True
-        
+
     except Exception as e:
         print(f"  Error applying label to email {email_id}: {e}")
         return False
@@ -837,7 +921,8 @@ def background_email_job():
     users = list(db.collection('identifier').stream())
     
     # Process emails for users with access
-    with ThreadPoolExecutor(max_workers=5) as executor:  # Adjust max_workers as needed
+    worker_count = _get_env_int("SCHEDULER_WORKERS", 5)
+    with ThreadPoolExecutor(max_workers=worker_count) as executor:
         executor.map(process_user, users)
     
     # Update billing dates and check trial expiration
@@ -1053,8 +1138,85 @@ def get_user_email_stats(user_id: str):
     """Get email statistics for a specific user"""
     try:
         firebase_manager = FirebaseManager()
-        classifications = firebase_manager.get_user_classifications(user_id)
+        # Optimize reads: fetch only recent docs needed for dashboard (last 30 days, capped)
+        from datetime import datetime as _dt, timedelta as _td
+        db = firestore.client()
+        coll = db.collection('identifier').document(user_id).collection('email_classifications')
+        now_utc = _dt.utcnow().replace(tzinfo=None)
+        thirty_days_ago_dt = now_utc - _td(days=30)
+        thirty_days_ago_epoch = int(thirty_days_ago_dt.timestamp())
+        classifications = []
+        try:
+            # Try numeric cutoff (if timestamps stored as epoch seconds)
+            q = (coll.where('timestamp', '>=', thirty_days_ago_epoch)
+                      .order_by('timestamp', direction=firestore.Query.DESCENDING)
+                      .limit(400))
+            classifications = [d.to_dict() for d in q.stream()]
+        except Exception:
+            try:
+                # Try datetime cutoff (if timestamps stored as Firestore Timestamp/datetime)
+                q = (coll.where('timestamp', '>=', thirty_days_ago_dt)
+                          .order_by('timestamp', direction=firestore.Query.DESCENDING)
+                          .limit(400))
+                classifications = [d.to_dict() for d in q.stream()]
+            except Exception:
+                try:
+                    # Fallback: no cutoff filter, but cap reads and order to keep it bounded
+                    q = coll.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(400)
+                    classifications = [d.to_dict() for d in q.stream()]
+                except Exception:
+                    # Final fallback: use manager (may be heavier)
+                    classifications = firebase_manager.get_user_classifications(user_id)
         
+        # If we have a pre-aggregated stats doc, prefer that (single read)
+        try:
+            stats_doc = db.collection('identifier').document(user_id).collection('meta').document('stats').get()
+            if stats_doc.exists:
+                stats = stats_doc.to_dict() or {}
+                # Build weekly_data from 'daily' map (last 7 days)
+                from datetime import datetime, timedelta
+                import calendar
+                today = datetime.now().replace(tzinfo=None)
+                daily = stats.get('daily') or {}
+                weekly_data = []
+                for i in range(7):
+                    current_date = today - timedelta(days=6-i)
+                    key = current_date.strftime('%Y-%m-%d')
+                    day_name = calendar.day_abbr[current_date.weekday()]
+                    day_entry = daily.get(key) or {}
+                    weekly_data.append({
+                        "day": day_name,
+                        "date": key,
+                        "processed": int(day_entry.get('processed') or 0),
+                        "spam": int(day_entry.get('spam') or 0),
+                    })
+                # Category breakdown from category_counts
+                category_counts = stats.get('category_counts') or {}
+                total_processed = int(stats.get('total_processed') or 0)
+                breakdown = []
+                for cat, cnt in category_counts.items():
+                    cnt_i = int(cnt or 0)
+                    pct = (cnt_i / total_processed * 100) if total_processed > 0 else 0
+                    breakdown.append({"category": cat, "count": cnt_i, "percentage": round(pct, 1)})
+                breakdown.sort(key=lambda x: x['count'], reverse=True)
+                top_category = breakdown[0]['category'] if breakdown else "None"
+                # Date range: last 30 days window
+                one_month_ago = today - timedelta(days=30)
+                return {
+                    "success": True,
+                    "stats": {
+                        "total_processed": total_processed,
+                        "spam_count": int(sum((daily.get(k) or {}).get('spam') or 0 for k in daily)),
+                        "accuracy": 94.7,
+                        "top_category": top_category,
+                        "category_breakdown": breakdown,
+                        "weekly_data": weekly_data,
+                        "date_range": f"{one_month_ago.strftime('%b %d')} - {today.strftime('%b %d, %Y')}"
+                    }
+                }
+        except Exception:
+            pass
+
         if not classifications:
             return {
                 "success": True,

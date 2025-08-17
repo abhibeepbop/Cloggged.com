@@ -14,7 +14,7 @@ export function SettingsPanel() {
       <div className="space-y-2">
         <h2 className="text-3xl font-bold text-gray-900">Privacy</h2>
         <p className="text-gray-600">
-          Manage your privacy and data settings
+          Download your privacy and data settings
         </p>
       </div>
 
@@ -27,11 +27,8 @@ export function SettingsPanel() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <Shield className="h-5 w-5" />
-            Privacy Settings
+            Data
           </CardTitle>
-          <CardDescription>
-            Control your data privacy and security preferences
-          </CardDescription>
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="space-y-4">

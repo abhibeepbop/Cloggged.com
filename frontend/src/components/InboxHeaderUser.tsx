@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
-import { Search, Menu, Settings, HelpCircle } from "lucide-react";
+import { Search, Menu } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { getStoredUser, clearAuth, canAccessDashboard, isAuthenticated } from "../utils/auth";
 import { Avatar, AvatarImage, AvatarFallback } from "./ui/avatar";
@@ -58,12 +58,6 @@ export function InboxHeaderUser() {
         </div>
 
         <div className="flex items-center gap-3 md:gap-4">
-          <Button variant="ghost" size="sm" className="p-2">
-            <HelpCircle className="h-5 w-5" />
-          </Button>
-          <Button variant="ghost" size="sm" className="p-2">
-            <Settings className="h-5 w-5" />
-          </Button>
           <Button variant="outline" size="sm">
             Watch demo
           </Button>

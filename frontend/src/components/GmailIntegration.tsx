@@ -43,7 +43,6 @@ export function GmailIntegration() {
           return
         }
         
-        console.log('GmailIntegration - UserData from localStorage:', userDataFromStorage)
         console.log('GmailIntegration - Using User ID:', userId)
         
         const response = await fetch(`http://localhost:8000/user/${userId}/billing-data`)

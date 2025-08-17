@@ -100,31 +100,31 @@ export function InboxContent() {
       </div>
 
       {/* Hero email showcasing the product */}
-      <div className="bg-gradient-to-r from-primary/20 to-primary/10 border-b border-primary/20 px-8 py-8">
-        <div className="max-w-5xl">
+      <div className="bg-gradient-to-r from-primary/20 to-primary/10 border-b border-primary/20 px-10 py-12">
+        <div className="max-w-6xl">
           <div className="flex items-start space-x-6">
             <div className="flex-1">
               <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center space-x-4">
-                  <span className="font-semibold text-xl text-gray-900">Clogged.ai</span>
+                <div className="flex items-center space-x-5">
+                  <span className="font-semibold text-2xl text-gray-900">Clogged.ai</span>
                 </div>
               </div>
-              <h2 className="text-3xl font-bold text-gray-900 mb-3">
+              <h2 className="text-4xl font-bold text-gray-900 mb-4">
                 Your inbox is now perfectly organized!
               </h2>
-              <p className="text-lg text-gray-700 mb-6 leading-relaxed">
+              <p className="text-xl text-gray-700 mb-8 leading-relaxed">
                 Welcome to your new, stress-free email experience. Our AI has automatically sorted your emails, 
                 filtered out spam, and prioritized what matters most. Notice how clean and organized everything looks?
               </p>
               <div className="flex justify-between items-center">
-                <div className="flex space-x-4">
+                <div className="flex space-x-5">
                   <Button 
-                    className="bg-primary hover:bg-primary/90 text-base px-6 py-3"
+                    className="bg-primary hover:bg-primary/90 text-lg px-7 py-4"
                     onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
                   >
                     Get started
                   </Button>
-                  <Button variant="outline" className="text-base px-6 py-3">
+                  <Button variant="outline" className="text-lg px-7 py-4">
                     Watch demo
                   </Button>
                 </div>

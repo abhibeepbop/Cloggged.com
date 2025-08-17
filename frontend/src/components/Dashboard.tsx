@@ -1,11 +1,10 @@
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
-import { useState, useEffect } from "react"
+import React, { useState, useEffect, lazy, Suspense } from "react"
 import { useNavigate } from "react-router-dom"
-import { AccountOverview } from "./AccountOverview"
-import { BillingManagement } from "./BillingManagement"
-import { GmailIntegration } from "./GmailIntegration"
-import { EmailStats } from "./EmailStats"
-import { SettingsPanel } from "./SettingsPanel"
+const AccountOverview = lazy(() => import("./AccountOverview").then(m => ({ default: m.AccountOverview })))
+const GmailIntegration = lazy(() => import("./GmailIntegration").then(m => ({ default: m.GmailIntegration })))
+const EmailStats = lazy(() => import("./EmailStats").then(m => ({ default: m.EmailStats })))
+// Note: BillingManagement and SettingsPanel are not actively used; keep eager import if needed elsewhere
 import { QuickActions } from "./QuickActions"
 import { 
   BarChart3, 
@@ -146,7 +145,9 @@ export function Dashboard() {
           
           <div className="flex-1 p-6 overflow-auto">
             <div className="max-w-7xl mx-auto">
-              {renderContent()}
+              <Suspense fallback={<div className="p-4 text-gray-600">Loading…</div>}>
+                {renderContent()}
+              </Suspense>
             </div>
           </div>
         </main>
