@@ -1137,59 +1137,54 @@ def cancel_subscription_me(request: Request):
 def get_user_email_stats(user_id: str):
     """Get email statistics for a specific user"""
     try:
+        from datetime import datetime, timedelta
+        import calendar
+
         firebase_manager = FirebaseManager()
-        # Optimize reads: fetch only recent docs needed for dashboard (last 30 days, capped)
-        from datetime import datetime as _dt, timedelta as _td
         db = firestore.client()
         coll = db.collection('identifier').document(user_id).collection('email_classifications')
-        now_utc = _dt.utcnow().replace(tzinfo=None)
-        thirty_days_ago_dt = now_utc - _td(days=30)
-        thirty_days_ago_epoch = int(thirty_days_ago_dt.timestamp())
+
+        # Time boundaries
+        now = datetime.now().replace(tzinfo=None)
+        today_midnight = datetime(year=now.year, month=now.month, day=now.day)
+        end_dt = today_midnight  # exclude current day
+        month_start = datetime(year=now.year, month=now.month, day=1)
+
+        # Query monthly classifications [month_start, end_dt)
         classifications = []
         try:
-            # Try numeric cutoff (if timestamps stored as epoch seconds)
-            q = (coll.where('timestamp', '>=', thirty_days_ago_epoch)
-                      .order_by('timestamp', direction=firestore.Query.DESCENDING)
-                      .limit(400))
+            q = coll.where('timestamp', '>=', int(month_start.timestamp()))
+            q = q.where('timestamp', '<', int(end_dt.timestamp()))
             classifications = [d.to_dict() for d in q.stream()]
         except Exception:
             try:
-                # Try datetime cutoff (if timestamps stored as Firestore Timestamp/datetime)
-                q = (coll.where('timestamp', '>=', thirty_days_ago_dt)
-                          .order_by('timestamp', direction=firestore.Query.DESCENDING)
-                          .limit(400))
+                q = coll.where('timestamp', '>=', month_start).where('timestamp', '<', end_dt)
                 classifications = [d.to_dict() for d in q.stream()]
             except Exception:
-                try:
-                    # Fallback: no cutoff filter, but cap reads and order to keep it bounded
-                    q = coll.order_by('timestamp', direction=firestore.Query.DESCENDING).limit(400)
-                    classifications = [d.to_dict() for d in q.stream()]
-                except Exception:
-                    # Final fallback: use manager (may be heavier)
-                    classifications = firebase_manager.get_user_classifications(user_id)
-        
-        # If we have a pre-aggregated stats doc, prefer that (single read)
+                classifications = firebase_manager.get_user_classifications(user_id)
+
+        # Prefer pre-aggregated stats for weekly chart if available
         try:
             stats_doc = db.collection('identifier').document(user_id).collection('meta').document('stats').get()
             if stats_doc.exists:
                 stats = stats_doc.to_dict() or {}
-                # Build weekly_data from 'daily' map (last 7 days)
-                from datetime import datetime, timedelta
-                import calendar
-                today = datetime.now().replace(tzinfo=None)
+                today = now
                 daily = stats.get('daily') or {}
+                # Determine current week (Mon..Sun), include only completed days (exclude today)
+                week_start = today - timedelta(days=today.weekday())  # Monday
                 weekly_data = []
-                for i in range(7):
-                    current_date = today - timedelta(days=6-i)
-                    key = current_date.strftime('%Y-%m-%d')
-                    day_name = calendar.day_abbr[current_date.weekday()]
-                    day_entry = daily.get(key) or {}
+                d = week_start
+                while d < end_dt:
+                    key = d.strftime('%Y-%m-%d')
+                    day_name = calendar.day_abbr[d.weekday()]
+                    entry = daily.get(key) or {}
                     weekly_data.append({
                         "day": day_name,
                         "date": key,
-                        "processed": int(day_entry.get('processed') or 0),
-                        "spam": int(day_entry.get('spam') or 0),
+                        "processed": int(entry.get('processed') or 0),
+                        "spam": int(entry.get('spam') or 0),
                     })
+                    d += timedelta(days=1)
                 # Category breakdown from category_counts
                 category_counts = stats.get('category_counts') or {}
                 total_processed = int(stats.get('total_processed') or 0)
@@ -1200,8 +1195,7 @@ def get_user_email_stats(user_id: str):
                     breakdown.append({"category": cat, "count": cnt_i, "percentage": round(pct, 1)})
                 breakdown.sort(key=lambda x: x['count'], reverse=True)
                 top_category = breakdown[0]['category'] if breakdown else "None"
-                # Date range: last 30 days window
-                one_month_ago = today - timedelta(days=30)
+                # Monthly date range (1st .. yesterday)
                 return {
                     "success": True,
                     "stats": {
@@ -1211,45 +1205,20 @@ def get_user_email_stats(user_id: str):
                         "top_category": top_category,
                         "category_breakdown": breakdown,
                         "weekly_data": weekly_data,
-                        "date_range": f"{one_month_ago.strftime('%b %d')} - {today.strftime('%b %d, %Y')}"
+                        "date_range": f"{month_start.strftime('%b %d')} - { (end_dt - timedelta(days=1)).strftime('%b %d, %Y') }"
                     }
                 }
         except Exception:
             pass
 
-        if not classifications:
-            return {
-                "success": True,
-                "stats": {
-                    "total_processed": 0,
-                    "spam_count": 0,
-                    "accuracy": 0,
-                    "top_category": "None",
-                    "category_breakdown": [],
-                    "weekly_data": [],
-                    "date_range": "No data"
-                }
-            }
-        
-        # Calculate monthly statistics
-        from datetime import datetime, timedelta
-        import calendar
-        
-        # Get current date and calculate one month ago
-        today = datetime.now().replace(tzinfo=None)
-        one_month_ago = today - timedelta(days=30)
-        
-        # Filter classifications for the past month
+        # Convert and filter to current month window (already queried)
         monthly_classifications = []
         for classification in classifications:
             timestamp = classification.get('timestamp')
             if timestamp:
                 # Convert timestamp to datetime
                 if isinstance(timestamp, (int, float)):
-                    if timestamp > 1000000000000:  # Milliseconds
-                        email_date = datetime.fromtimestamp(timestamp / 1000)
-                    else:  # Seconds
-                        email_date = datetime.fromtimestamp(timestamp)
+                    email_date = datetime.fromtimestamp(timestamp / 1000) if timestamp > 1000000000000 else datetime.fromtimestamp(timestamp)
                 else:
                     email_date = timestamp
                 
@@ -1257,18 +1226,18 @@ def get_user_email_stats(user_id: str):
                 if hasattr(email_date, 'tzinfo') and email_date.tzinfo is not None:
                     email_date = email_date.replace(tzinfo=None)
                 
-                # Include if within past month
-                if email_date >= one_month_ago:
+                # Include if within month window (month_start <= date < end_dt)
+                if month_start <= email_date < end_dt:
                     monthly_classifications.append(classification)
             else:
                 # If no timestamp, include it (legacy data)
                 monthly_classifications.append(classification)
         
-        # Use monthly data for statistics
+        # Use monthly data for statistics (1st .. yesterday)
         total_processed = len(monthly_classifications)
         spam_count = len([c for c in monthly_classifications if c.get('classification', '').lower() in ['spam', 'not_spam', 'notspam']])
         
-        # Category breakdown for monthly data
+        # Category breakdown for current month
         category_counts = {}
         for classification in monthly_classifications:
             category = classification.get('classification', 'Other')
@@ -1313,49 +1282,42 @@ def get_user_email_stats(user_id: str):
         # Sort by count descending
         category_breakdown.sort(key=lambda x: x['count'], reverse=True)
         
-        # Calculate weekly data for the past month
+        # Weekly chart: current week (Mon..Sun), include completed days only
+        week_start = now - timedelta(days=now.weekday())
         weekly_data = []
-        for i in range(7):
-            current_date = today - timedelta(days=6-i)  # Last 7 days
-            day_name = calendar.day_abbr[current_date.weekday()]
+        # Build a dict for counts from monthly_classifications
+        by_day = {}
+        for c in monthly_classifications:
+            ts = c.get('timestamp')
+            if not ts:
+                continue
+            d = datetime.fromtimestamp(ts / 1000) if isinstance(ts, (int, float)) and ts > 1000000000000 else (datetime.fromtimestamp(ts) if isinstance(ts, (int, float)) else ts)
+            if hasattr(d, 'tzinfo') and d.tzinfo is not None:
+                d = d.replace(tzinfo=None)
+            day_key = datetime(year=d.year, month=d.month, day=d.day)
+            if not (week_start <= day_key < end_dt):
+                continue
+            entry = by_day.get(day_key)
+            if not entry:
+                entry = { 'processed': 0, 'spam': 0 }
+                by_day[day_key] = entry
+            entry['processed'] += 1
+            if str(c.get('classification', '')).lower() in ['spam', 'not_spam', 'notspam']:
+                entry['spam'] += 1
+
+        d = week_start
+        while d < end_dt:
+            entry = by_day.get(d) or { 'processed': 0, 'spam': 0 }
             weekly_data.append({
-                "day": day_name,
-                "date": current_date.strftime("%Y-%m-%d"),
-                "processed": 0,
-                "spam": 0
+                "day": calendar.day_abbr[d.weekday()],
+                "date": d.strftime('%Y-%m-%d'),
+                "processed": entry['processed'],
+                "spam": entry['spam']
             })
+            d += timedelta(days=1)
         
-        # Count emails by day for the last 7 days
-        for classification in monthly_classifications:
-            timestamp = classification.get('timestamp')
-            if timestamp:
-                if isinstance(timestamp, (int, float)):
-                    if timestamp > 1000000000000:  # Milliseconds
-                        email_date = datetime.fromtimestamp(timestamp / 1000)
-                    else:  # Seconds
-                        email_date = datetime.fromtimestamp(timestamp)
-                else:
-                    email_date = timestamp
-                
-                # Ensure email_date is timezone-naive for comparison
-                if hasattr(email_date, 'tzinfo') and email_date.tzinfo is not None:
-                    email_date = email_date.replace(tzinfo=None)
-                
-                # Check if email is from last 7 days
-                if email_date >= today - timedelta(days=7):
-                    day_of_week = email_date.weekday()
-                    day_name = calendar.day_abbr[day_of_week]
-                    
-                    # Find the corresponding day in weekly_data
-                    for day_data in weekly_data:
-                        if day_data["day"] == day_name:
-                            day_data["processed"] += 1
-                            if classification.get('classification', '').lower() in ['spam', 'not_spam', 'notspam']:
-                                day_data["spam"] += 1
-                            break
-        
-        # Add date range info
-        date_range = f"{one_month_ago.strftime('%b %d')} - {today.strftime('%b %d, %Y')}"
+        # Add date range info for month
+        date_range = f"{month_start.strftime('%b %d')} - {(end_dt - timedelta(days=1)).strftime('%b %d, %Y')}"
         
         return {
             "success": True,
