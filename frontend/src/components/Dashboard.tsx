@@ -1,10 +1,6 @@
-import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import React, { useState, useEffect, lazy, Suspense } from "react"
+import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import { useNavigate } from "react-router-dom"
-const AccountOverview = lazy(() => import("./AccountOverview").then(m => ({ default: m.AccountOverview })))
-const GmailIntegration = lazy(() => import("./GmailIntegration").then(m => ({ default: m.GmailIntegration })))
-const EmailStats = lazy(() => import("./EmailStats").then(m => ({ default: m.EmailStats })))
-// Note: BillingManagement and SettingsPanel are not actively used; keep eager import if needed elsewhere
 import { QuickActions } from "./QuickActions"
 import { 
   BarChart3, 
@@ -13,6 +9,10 @@ import {
   Settings, 
   User
 } from "lucide-react"
+
+const AccountOverview = lazy(() => import("./AccountOverview").then(m => ({ default: m.AccountOverview })))
+const GmailIntegration = lazy(() => import("./GmailIntegration").then(m => ({ default: m.GmailIntegration })))
+const EmailStats = lazy(() => import("./EmailStats").then(m => ({ default: m.EmailStats })))
 
 export function Dashboard() {
   const [activeSection, setActiveSection] = useState("overview")
