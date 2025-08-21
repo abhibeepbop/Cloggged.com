@@ -1,4 +1,5 @@
-from fastapi import FastAPI, HTTPException, status, Depends, Request, Security, Body
+from fastapi import FastAPI, HTTPException, status, Depends, Request, Security
+from fastapi import Body
 from fastapi.responses import JSONResponse, RedirectResponse
 from pydantic import BaseModel
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm, HTTPBearer, HTTPAuthorizationCredentials
@@ -44,18 +45,50 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize Firebase Admin (do this once at startup)
-cred = credentials.Certificate("../KEYS/maila-248fc-firebase-adminsdk-fbsvc-0cc3ab381b.json")
-firebase_admin.initialize_app(cred)
+# Initialize Firebase Admin from environment (Render/production)
+try:
+    firebase_admin.get_app()
+except ValueError:
+    from config import (
+        FIREBASE_PROJECT_ID, FIREBASE_PRIVATE_KEY_ID, FIREBASE_PRIVATE_KEY,
+        FIREBASE_CLIENT_EMAIL, FIREBASE_CLIENT_ID
+    )
+    sa_info = {
+        "type": "service_account",
+        "project_id": FIREBASE_PROJECT_ID,
+        "private_key_id": FIREBASE_PRIVATE_KEY_ID,
+        "private_key": (FIREBASE_PRIVATE_KEY or "").replace('\\n', '\n'),
+        "client_email": FIREBASE_CLIENT_EMAIL,
+        "client_id": FIREBASE_CLIENT_ID,
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        "client_x509_cert_url": f"https://www.googleapis.com/robot/v1/metadata/x509/{FIREBASE_CLIENT_EMAIL}",
+    }
+    cred = credentials.Certificate(sa_info)
+    firebase_admin.initialize_app(cred)
 
-GOOGLE_OAUTH_CLIENT_SECRET_PATH = "C:\\Users\\vabhi\\OneDrive\\Desktop\\Personal\\coding\\KEYS\\client_secret_536404685178-e9efhvprp9gl1t72pgvmn4u2o2n6clsu.apps.googleusercontent.com.json"
+GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID")
+GOOGLE_CLIENT_SECRET = os.getenv("GOOGLE_CLIENT_SECRET")
 GOOGLE_SCOPES = [
     "https://www.googleapis.com/auth/gmail.readonly",
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/userinfo.email",
     "openid"
 ]
-GOOGLE_REDIRECT_URI = "http://localhost:3000/oauth-callback"
+GOOGLE_REDIRECT_URI = os.getenv("GOOGLE_REDIRECT_URI", "http://localhost:3000/oauth-callback")
+
+GOOGLE_CLIENT_CONFIG = {
+    "web": {
+        "client_id": GOOGLE_CLIENT_ID,
+        "project_id": os.getenv("FIREBASE_PROJECT_ID", ""),
+        "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+        "token_uri": "https://oauth2.googleapis.com/token",
+        "client_secret": GOOGLE_CLIENT_SECRET,
+        "redirect_uris": [GOOGLE_REDIRECT_URI],
+        "javascript_origins": []
+    }
+}
 
 bearer_scheme = HTTPBearer()
 
@@ -335,11 +368,7 @@ def google_auth():
     """Initial Google OAuth for sign-in (no Firebase token required)"""
     print("Starting Google OAuth for sign-in...")
     # Start OAuth flow for Gmail
-    flow = Flow.from_client_secrets_file(
-        GOOGLE_OAUTH_CLIENT_SECRET_PATH,
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI
-    )
+    flow = Flow.from_client_config(GOOGLE_CLIENT_CONFIG, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI)
     # Use a temporary state for sign-in
     # Do not force prompt=consent here to avoid repeated consent screens for returning users
     auth_url, state = flow.authorization_url(
@@ -355,14 +384,9 @@ def google_auth():
 @app.get("/gmail/connect")
 def gmail_connect(user=Depends(verify_firebase_token)):
     print("GOOGLE_REDIRECT_URI:", GOOGLE_REDIRECT_URI)
-    print("GOOGLE_OAUTH_CLIENT_SECRET_PATH:", GOOGLE_OAUTH_CLIENT_SECRET_PATH)
     print("GOOGLE_SCOPES:", GOOGLE_SCOPES)
     # Start OAuth flow for Gmail
-    flow = Flow.from_client_secrets_file(
-        GOOGLE_OAUTH_CLIENT_SECRET_PATH,
-        scopes=GOOGLE_SCOPES,
-        redirect_uri=GOOGLE_REDIRECT_URI
-    )
+    flow = Flow.from_client_config(GOOGLE_CLIENT_CONFIG, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI)
     # Use user's UID as state to identify them in callback
     # If the user already has a refresh token saved, skip OAuth and go straight to payment
     try:
@@ -401,11 +425,7 @@ def gmail_oauth2callback(code: str, state: str):
         print("GOOGLE_REDIRECT_URI:", GOOGLE_REDIRECT_URI)
         
         # state is either "signin" or the user's UID
-        flow = Flow.from_client_secrets_file(
-            GOOGLE_OAUTH_CLIENT_SECRET_PATH,
-            scopes=GOOGLE_SCOPES,
-            redirect_uri=GOOGLE_REDIRECT_URI
-        )
+        flow = Flow.from_client_config(GOOGLE_CLIENT_CONFIG, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI)
         print("Flow created successfully")
         
         flow.fetch_token(code=code)
@@ -1698,11 +1718,7 @@ def exchange_code(request: CodeExchangeRequest):
         print(f"State: {request.state}")
         
         # Create OAuth flow
-        flow = Flow.from_client_secrets_file(
-            GOOGLE_OAUTH_CLIENT_SECRET_PATH,
-            scopes=GOOGLE_SCOPES,
-            redirect_uri=GOOGLE_REDIRECT_URI
-        )
+        flow = Flow.from_client_config(GOOGLE_CLIENT_CONFIG, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI)
         
         # Exchange code for tokens
         flow.fetch_token(code=request.code)
@@ -1896,11 +1912,7 @@ def gmail_connect_simple(user_id: str):
     try:
         print(f"Starting Gmail OAuth for user: {user_id}")
         # Start OAuth flow for Gmail
-        flow = Flow.from_client_secrets_file(
-            GOOGLE_OAUTH_CLIENT_SECRET_PATH,
-            scopes=GOOGLE_SCOPES,
-            redirect_uri=GOOGLE_REDIRECT_URI
-        )
+        flow = Flow.from_client_config(GOOGLE_CLIENT_CONFIG, scopes=GOOGLE_SCOPES, redirect_uri=GOOGLE_REDIRECT_URI)
         # Use user's UID as state to identify them in callback
         auth_url, state = flow.authorization_url(
             access_type="offline",
