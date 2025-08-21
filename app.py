@@ -29,17 +29,18 @@ from google.cloud import firestore as gcf
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
+# Frontend base URL and CORS origins
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+ADDITIONAL_FRONTEND_ORIGIN = os.getenv("ADDITIONAL_FRONTEND_ORIGIN", "")
+_origins = [FRONTEND_URL]
+if ADDITIONAL_FRONTEND_ORIGIN and ADDITIONAL_FRONTEND_ORIGIN not in _origins:
+    _origins.append(ADDITIONAL_FRONTEND_ORIGIN)
+if "http://localhost:3000" not in _origins:
+    _origins.append("http://localhost:3000")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],  # React dev server
+    allow_origins=_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -396,7 +397,7 @@ def gmail_connect(user=Depends(verify_firebase_token)):
             user_data = user_doc.to_dict() or {}
             if user_data.get("gmail_tokens", {}).get("refresh_token"):
                 from fastapi.responses import RedirectResponse
-                return RedirectResponse(url="http://localhost:3000/payment")
+                return RedirectResponse(url=f"{FRONTEND_URL}/payment")
     except Exception:
         pass
 
@@ -482,15 +483,15 @@ def gmail_oauth2callback(code: str, state: str):
                 if user_can_access_dashboard(user_data):
                     print("Access granted by unified rule, redirecting to dashboard")
                     try:
-                        resp = RedirectResponse(url="http://localhost:3000/dashboard")
+                        resp = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
                         return resp
                     except Exception as e:
                         print(f"Error creating session token: {e}")
-                        return RedirectResponse(url="http://localhost:3000/dashboard")
+                        return RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
                 else:
                     print("Access denied by unified rule, redirecting to pricing")
                     from fastapi.responses import RedirectResponse
-                    return RedirectResponse(url="http://localhost:3000/pricing")
+                    return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
             else:
                 print(f"New user {user_email}, creating user record and redirecting appropriately")
                 # Create new user record with authflow set to True
@@ -514,10 +515,10 @@ def gmail_oauth2callback(code: str, state: str):
                 # Unified access check for brand new user
                 if user_can_access_dashboard(new_user_data):
                     from fastapi.responses import RedirectResponse
-                    return RedirectResponse(url="http://localhost:3000/dashboard")
+                    return RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
                 else:
                     from fastapi.responses import RedirectResponse
-                    return RedirectResponse(url="http://localhost:3000/pricing")
+                    return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
         else:
             # This is Gmail connection for existing user
             # Store tokens in Firestore under users/<uid>/gmail_tokens
@@ -537,10 +538,10 @@ def gmail_oauth2callback(code: str, state: str):
             # Maintain session cookie if present; otherwise create one
             user_id = state
             try:
-                resp = RedirectResponse(url="http://localhost:3000/payment")
+                resp = RedirectResponse(url=f"{FRONTEND_URL}/payment")
                 return resp
             except Exception:
-                return RedirectResponse(url="http://localhost:3000/payment")
+                return RedirectResponse(url=f"{FRONTEND_URL}/payment")
     except Exception as e:
         print(f"Error in OAuth callback: {e}")
         import traceback
@@ -1033,8 +1034,8 @@ def stripe_create_checkout(request: Request):
         session = stripe.checkout.Session.create(
             mode="subscription",
             line_items=[{"price": price_id, "quantity": 1}],
-            success_url="http://localhost:3000/dashboard?session_id={CHECKOUT_SESSION_ID}",
-            cancel_url="http://localhost:3000/pricing",
+            success_url=f"{FRONTEND_URL}/dashboard?session_id={{CHECKOUT_SESSION_ID}}",
+            cancel_url=f"{FRONTEND_URL}/pricing",
             client_reference_id=user_id,
             customer_email=user.get("email"),
             allow_promotion_codes=True,
@@ -1577,9 +1578,9 @@ def set_user_consent(user_id: str, req: ConsentRequest):
         user_data["consent"] = bool(req.consent)
         # Decide where to send them next
         if not user_data.get("consent"):
-            target = "http://localhost:3000/consent"
+            target = f"{FRONTEND_URL}/consent"
         else:
-            target = "http://localhost:3000/dashboard" if user_can_access_dashboard(user_data) else "http://localhost:3000/"
+            target = f"{FRONTEND_URL}/dashboard" if user_can_access_dashboard(user_data) else f"{FRONTEND_URL}/"
         return {"success": True, "redirect_url": target}
     except Exception as e:
         return {"success": False, "error": str(e)}
@@ -1760,7 +1761,7 @@ def exchange_code(request: CodeExchangeRequest):
                     # Redirect to dashboard after successful Gmail connect
                     safe_user = _sanitize_user_for_client(_json_safe(existing))
                     resp = JSONResponse({
-                        "redirect_url": "http://localhost:3000/dashboard",
+                        "redirect_url": f"{FRONTEND_URL}/dashboard",
                         "user_id": request.state,
                         "user_data": safe_user
                     })
@@ -1799,7 +1800,7 @@ def exchange_code(request: CodeExchangeRequest):
             )
             
             # Google consent is the only consent screen. Existing users go directly based on access.
-            target = "http://localhost:3000/dashboard" if user_can_access_dashboard(user_data) else "http://localhost:3000/pricing"
+            target = f"{FRONTEND_URL}/dashboard" if user_can_access_dashboard(user_data) else f"{FRONTEND_URL}/pricing"
             print(f"Returning redirect_url: {target}")
             safe_user = _sanitize_user_for_client(_json_safe(user_data))
             # Set httpOnly session cookie
@@ -1839,7 +1840,7 @@ def exchange_code(request: CodeExchangeRequest):
                     raise
             
             # New users: direct to dashboard if they have access, else to pricing
-            target = "http://localhost:3000/dashboard" if user_can_access_dashboard(new_user_data) else "http://localhost:3000/pricing"
+            target = f"{FRONTEND_URL}/dashboard" if user_can_access_dashboard(new_user_data) else f"{FRONTEND_URL}/pricing"
             print(f"Returning redirect_url: {target}")
             safe_new = _sanitize_user_for_client(_json_safe(new_user_data))
             session_token = create_session_jwt(new_user_id)
@@ -1855,7 +1856,7 @@ def exchange_code(request: CodeExchangeRequest):
         print(f"Error in code exchange: {e}")
         import traceback
         traceback.print_exc()
-        return {"redirect_url": "http://localhost:3000/pricing"} 
+        return {"redirect_url": f"{FRONTEND_URL}/pricing"}
 
 @app.get("/debug-user/{user_id}")
 def debug_user(user_id: str):
