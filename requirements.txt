@@ -10,3 +10,4 @@ uvicorn
 python-multipart
 stripe
 PyJWT
+gunicorn==21.2.0
