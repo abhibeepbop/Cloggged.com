@@ -40,7 +40,8 @@ function Inbox() {
 function PricingPage() {
   const handleStartFreeTrial = () => {
     // Redirect to Google OAuth for sign-in (same as inbox page)
-    window.location.href = 'http://localhost:8000/auth/google';
+    const API = process.env.REACT_APP_API_BASE || 'http://localhost:8000';
+    window.location.href = `${API}/auth/google`;
   };
 
   return <Pricing onStartFreeTrial={handleStartFreeTrial} />;

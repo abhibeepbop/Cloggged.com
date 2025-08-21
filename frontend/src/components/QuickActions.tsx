@@ -1,3 +1,4 @@
+import { API_BASE } from "../utils/api";
 import { Button } from "./ui/button"
 import { RefreshCw, Download, MessageSquare, Bell, LogOut } from "lucide-react"
 import { Badge } from "./ui/badge"
@@ -9,7 +10,7 @@ export function QuickActions() {
   
   const handleLogout = async () => {
     try {
-      await fetch('http://localhost:8000/auth/logout', { method: 'POST', credentials: 'include' })
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' })
     } catch (_) {
       // ignore network errors on logout
     }

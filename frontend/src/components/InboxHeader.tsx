@@ -1,3 +1,4 @@
+import { API_BASE } from "../utils/api";
 import React from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -56,14 +57,14 @@ export function InboxHeader() {
               <Button
                 variant="ghost"
                 size="sm"
-                onClick={() => (window.location.href = 'http://localhost:8000/auth/google')}
+                onClick={() => (window.location.href = `${API_BASE}/auth/google`)}
               >
                 Sign in
               </Button>
               <Button
                 size="sm"
                 className="bg-primary hover:bg-primary/90"
-                onClick={() => (window.location.href = 'http://localhost:8000/auth/google')}
+                onClick={() => (window.location.href = `${API_BASE}/auth/google`)}
               >
                 Get started
               </Button>

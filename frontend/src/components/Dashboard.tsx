@@ -1,3 +1,4 @@
+import { API_BASE } from "./../utils/api";
 import React, { useState, useEffect, lazy, Suspense } from "react"
 import { Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent, SidebarGroupLabel, SidebarMenu, SidebarMenuButton, SidebarMenuItem, SidebarProvider, SidebarTrigger } from "./ui/sidebar"
 import { useNavigate } from "react-router-dom"
@@ -52,7 +53,7 @@ export function Dashboard() {
   const verifyFirebaseToken = async (token: string) => {
     try {
       // Verify token with Firebase
-      const response = await fetch('http://localhost:8000/verify-token', {
+      const response = await fetch(`${API_BASE}/verify-token`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

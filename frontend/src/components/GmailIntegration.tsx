@@ -1,3 +1,4 @@
+import { API_BASE } from "./../utils/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
@@ -31,7 +32,7 @@ export function GmailIntegration() {
         } catch {}
         if (!userId) {
           try {
-            const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+            const me = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
             if (me.ok) {
               const data = await me.json()
               userId = data?.user_id || ''
@@ -45,12 +46,12 @@ export function GmailIntegration() {
         
         console.log('GmailIntegration - Using User ID:', userId)
         
-        const response = await fetch(`http://localhost:8000/user/${userId}/billing-data`)
+        const response = await fetch(`${API_BASE}/user/${userId}/billing-data`)
         const result = await response.json()
         console.log('GmailIntegration - Billing data response:', result)
 
         // Always fetch user doc to determine connection status
-        const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+        const userResponse = await fetch(`${API_BASE}/debug-user/${userId}`)
         const userResult = await userResponse.json()
         if (userResult.success) {
           setUserData(userResult.user_data)
@@ -60,7 +61,7 @@ export function GmailIntegration() {
         }
 
         // Fetch email stats regardless of billing success
-        const statsResponse = await fetch(`http://localhost:8000/user/${userId}/email-stats`)
+        const statsResponse = await fetch(`${API_BASE}/user/${userId}/email-stats`)
         const statsResult = await statsResponse.json()
         if (statsResult.success) {
           setEmailStats(statsResult.stats)
@@ -88,7 +89,7 @@ export function GmailIntegration() {
       const userId = userDataFromStorage.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2'
       
       console.log('Triggering manual sync for user:', userId)
-      const response = await fetch(`http://localhost:8000/trigger-user-sync/${userId}`, {
+      const response = await fetch(`${API_BASE}/trigger-user-sync/${userId}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -100,7 +101,7 @@ export function GmailIntegration() {
       
       if (result.success) {
         // Refresh user data to get updated last_sync
-      const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+      const userResponse = await fetch(`${API_BASE}/debug-user/${userId}`)
         const userResult = await userResponse.json()
         
         if (userResult.success) {
@@ -131,7 +132,7 @@ export function GmailIntegration() {
       console.log(`Current paused state: ${processingPaused}`)
       console.log(`Should enable: ${shouldEnable}`)
       
-      const response = await fetch(`http://localhost:8000/toggle-email-processing/${userId}?enabled=${shouldEnable}`, {
+      const response = await fetch(`${API_BASE}/toggle-email-processing/${userId}?enabled=${shouldEnable}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -367,14 +368,14 @@ export function GmailIntegration() {
                   userId = uds.user_id || uds.uid || ''
                 } catch {}
                 if (!userId) {
-                  const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+                  const me = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
                   if (me.ok) {
                     const data = await me.json()
                     userId = data?.user_id || ''
                   }
                 }
                 if (userId) {
-                  window.location.href = `http://localhost:8000/gmail/connect-simple/${userId}`
+                  window.location.href = `${API_BASE}/gmail/connect-simple/${userId}`
                 }
               } catch {}
             }}>

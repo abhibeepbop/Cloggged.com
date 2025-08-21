@@ -1,3 +1,4 @@
+import { API_BASE } from "./../utils/api";
 import { useEffect } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { setAuth } from "../utils/auth";
@@ -14,7 +15,7 @@ export function PaymentSuccess() {
     }
     (async () => {
       try {
-        const r = await fetch("http://localhost:8000/stripe/confirm-session", {
+        const r = await fetch(`${API_BASE}/stripe/confirm-session`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
@@ -23,7 +24,7 @@ export function PaymentSuccess() {
         if (r.ok) {
           // Refresh auth state from server so dashboard guard passes
           try {
-            const me = await fetch("http://localhost:8000/session/me", { credentials: "include" });
+            const me = await fetch(`${API_BASE}/session/me`, { credentials: "include" });
             if (me.ok) {
               const data = await me.json();
               setAuth({ ...(data?.user_data || {}), user_id: data?.user_id });

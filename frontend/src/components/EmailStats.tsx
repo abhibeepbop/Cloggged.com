@@ -1,3 +1,4 @@
+import { API_BASE } from "./../utils/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
 import { Badge } from "./ui/badge"
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell, LineChart, Line } from "recharts"
@@ -38,7 +39,7 @@ export function EmailStats() {
         } catch {}
         if (!userId) {
           try {
-            const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+            const me = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
             if (me.ok) {
               const data = await me.json()
               userId = data?.user_id || ''
@@ -51,7 +52,7 @@ export function EmailStats() {
         }
         // console.log('EmailStats - User ID:', userId)
         
-        const response = await fetch(`http://localhost:8000/user/${userId}/email-stats`)
+        const response = await fetch(`${API_BASE}/user/${userId}/email-stats`)
         const result = await response.json()
         
         console.log('EmailStats - Response:', result)

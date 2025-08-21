@@ -1,3 +1,4 @@
+import { API_BASE } from "../utils/api";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
 import { Button } from "./ui/button"
 import { Badge } from "./ui/badge"
@@ -27,7 +28,7 @@ export function BillingManagement() {
         const userData = JSON.parse(localStorage.getItem('userData') || '{}')
         const userId = userData.uid || 'user_vabhi9920' // fallback for testing
         
-        const response = await fetch(`http://localhost:8000/user/${userId}/billing-data`)
+        const response = await fetch(`${API_BASE}/user/${userId}/billing-data`)
         const result = await response.json()
         
         console.log('BillingManagement - Billing data response:', result) // Debug log

@@ -1,3 +1,4 @@
+import { API_BASE } from "../utils/api";
 import React from "react";
 import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
@@ -120,7 +121,7 @@ export function InboxContent() {
                 <div className="flex space-x-5">
                   <Button 
                     className="bg-primary hover:bg-primary/90 text-lg px-7 py-4"
-                    onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
+                    onClick={() => window.location.href = `${API_BASE}/auth/google`}
                   >
                     Get started
                   </Button>
@@ -191,7 +192,7 @@ export function InboxContent() {
           <div className="flex justify-center space-x-3">
             <Button 
               className="bg-primary hover:bg-primary/90"
-              onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
+              onClick={() => window.location.href = `${API_BASE}/auth/google`}
             >
               Get started
             </Button>

@@ -1,3 +1,4 @@
+import { API_BASE } from "../utils/api";
 import React from "react";
 import { Button } from "./ui/button";
 import { Input } from "./ui/input";
@@ -18,7 +19,7 @@ export function InboxHeaderUser() {
 
   const handleSignOut = async () => {
     try {
-      await fetch('http://localhost:8000/auth/logout', { method: 'POST', credentials: 'include' });
+      await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
     } catch (_) {
       // ignore network errors on logout
     }
@@ -114,7 +115,7 @@ export function InboxHeaderUser() {
               <Button
                 size="sm"
                 className="bg-primary hover:bg-primary/90"
-                onClick={() => (window.location.href = 'http://localhost:8000/auth/google')}
+                onClick={() => (window.location.href = `${API_BASE}/auth/google`)}
               >
                 Sign in
               </Button>

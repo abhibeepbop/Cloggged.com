@@ -1,3 +1,4 @@
+import { API_BASE } from "./../utils/api";
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { PaymentForm } from './PaymentForm';
@@ -55,7 +56,7 @@ export function PaymentPage() {
               Home
             </button>
             <button 
-              onClick={() => window.location.href = 'http://localhost:8000/auth/google'}
+              onClick={() => window.location.href = `${API_BASE}/auth/google`}
               className="bg-[#EFA6A7] hover:bg-[#e89899] text-black px-4 py-2 rounded-full font-medium transition-colors"
             >
               Sign In

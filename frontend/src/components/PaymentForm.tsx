@@ -1,3 +1,4 @@
+import { API_BASE } from "../utils/api";
 import React, { useState } from 'react';
 import { loadStripe } from '@stripe/stripe-js';
 import {
@@ -27,7 +28,7 @@ function CheckoutForm({ onSuccess, onCancel, customerEmail }: PaymentFormProps) 
     // Create payment intent when component mounts
     const createPaymentIntent = async () => {
       try {
-        const response = await fetch('http://localhost:8000/create-payment-intent', {
+        const response = await fetch(`${API_BASE}/create-payment-intent`, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',

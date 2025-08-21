@@ -1,6 +1,7 @@
 import React, { useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { setAuth } from '../utils/auth';
+import { API_BASE } from "./../utils/api";
 
 export function OAuthCallback() {
   const navigate = useNavigate();
@@ -24,7 +25,7 @@ export function OAuthCallback() {
         sessionStorage.setItem(key, '1');
         try {
           // Exchange code for tokens using our backend
-          const response = await fetch('http://localhost:8000/exchange-code', {
+          const response = await fetch(`${API_BASE}/exchange-code`, {
             method: 'POST',
             headers: {
               'Content-Type': 'application/json',
@@ -41,7 +42,7 @@ export function OAuthCallback() {
               // Fetch fresh user data from backend to ensure latest subscription/trial flags
               try {
                 if (data.user_id) {
-                  const fresh = await fetch(`http://localhost:8000/debug-user/${data.user_id}`);
+                  const fresh = await fetch(`${API_BASE}/debug-user/${data.user_id}`);
                   const freshJson = await fresh.json();
                   if (freshJson && freshJson.success && freshJson.user_data) {
                     setAuth({ ...(freshJson.user_data || {}), user_id: data.user_id });
@@ -59,10 +60,10 @@ export function OAuthCallback() {
               try {
                 const uid = data.user_id || (data.user_data && (data.user_data.uid || data.user_data.user_id));
                 if (uid) {
-                  const ch = await fetch(`http://localhost:8000/check-authflow/${uid}`);
+                  const ch = await fetch(`${API_BASE}/check-authflow/${uid}`);
                   const cj = await ch.json();
                   if (cj && cj.success && cj.needs_gmail_oauth) {
-                    window.location.href = `http://localhost:8000/gmail/connect-simple/${uid}`;
+                    window.location.href = `${API_BASE}/gmail/connect-simple/${uid}`;
                     return;
                   }
                 }

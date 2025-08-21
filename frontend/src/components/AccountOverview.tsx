@@ -1,3 +1,4 @@
+import { API_BASE } from "../utils/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
 import { Badge } from "./ui/badge"
 import { Progress } from "./ui/progress"
@@ -32,7 +33,7 @@ export function AccountOverview() {
         } catch {}
         if (!userId) {
           try {
-            const me = await fetch('http://localhost:8000/session/me', { credentials: 'include' })
+            const me = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
             if (me.ok) {
               const data = await me.json()
               userId = data?.user_id || ''
@@ -44,7 +45,7 @@ export function AccountOverview() {
           return
         }
         
-        const response = await fetch(`http://localhost:8000/user/${userId}/billing-data`)
+        const response = await fetch(`${API_BASE}/user/${userId}/billing-data`)
         const result = await response.json()
         
         console.log('Billing data response:', result) // Debug log
@@ -122,7 +123,7 @@ export function AccountOverview() {
       
       console.log('Cancelling subscription for user:', userId)
       
-      const response = await fetch('http://localhost:8000/cancel-subscription', {
+      const response = await fetch(`${API_BASE}/cancel-subscription`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -135,7 +136,7 @@ export function AccountOverview() {
       
       if (result.success) {
         // Refresh billing data
-        const billingResponse = await fetch(`http://localhost:8000/user/${userId}/billing-data`)
+        const billingResponse = await fetch(`${API_BASE}/user/${userId}/billing-data`)
         const billingResult = await billingResponse.json()
         
         if (billingResult.success) {
