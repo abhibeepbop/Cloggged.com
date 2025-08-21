@@ -379,7 +379,6 @@ def google_auth():
     )
     print("AUTH_URL:", auth_url)
     # Redirect directly to Google OAuth
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url=auth_url)
 
 @app.get("/gmail/connect")
@@ -396,7 +395,6 @@ def gmail_connect(user=Depends(verify_firebase_token)):
         if user_doc.exists:
             user_data = user_doc.to_dict() or {}
             if user_data.get("gmail_tokens", {}).get("refresh_token"):
-                from fastapi.responses import RedirectResponse
                 return RedirectResponse(url=f"{FRONTEND_URL}/payment")
     except Exception:
         pass
@@ -414,7 +412,6 @@ def gmail_connect(user=Depends(verify_firebase_token)):
     else:
         print("WARNING: Redirect URI parameter NOT found in URL")
     # Redirect directly to Google OAuth
-    from fastapi.responses import RedirectResponse
     return RedirectResponse(url=auth_url)
 
 @app.get("/gmail/oauth2callback")
@@ -490,7 +487,6 @@ def gmail_oauth2callback(code: str, state: str):
                         return RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
                 else:
                     print("Access denied by unified rule, redirecting to pricing")
-                    from fastapi.responses import RedirectResponse
                     return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
             else:
                 print(f"New user {user_email}, creating user record and redirecting appropriately")
@@ -514,10 +510,8 @@ def gmail_oauth2callback(code: str, state: str):
                 
                 # Unified access check for brand new user
                 if user_can_access_dashboard(new_user_data):
-                    from fastapi.responses import RedirectResponse
                     return RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
                 else:
-                    from fastapi.responses import RedirectResponse
                     return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
         else:
             # This is Gmail connection for existing user
