@@ -164,13 +164,15 @@ def decode_session_jwt(token: str) -> dict:
     return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALG])
 
 def set_session_cookie(response: JSONResponse, token: str):
-    # Dev: secure=False; set True in production behind HTTPS
+    # Use secure cookies in production (cross-site Vercel ↔ Render)
+    secure_flag = os.getenv("COOKIE_SECURE", "true").strip().lower() == "true"
+    same_site = "none" if secure_flag else "lax"
     response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=secure_flag,
+        samesite=same_site,
         max_age=SESSION_TTL_SECONDS,
         path="/",
     )
@@ -480,11 +482,15 @@ def gmail_oauth2callback(code: str, state: str):
                 if user_can_access_dashboard(user_data):
                     print("Access granted by unified rule, redirecting to dashboard")
                     try:
+                        # Create session and set cookie
+                        session_token = create_session_jwt(user_doc.id)
                         resp = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+                        set_session_cookie(resp, session_token)
                         return resp
                     except Exception as e:
                         print(f"Error creating session token: {e}")
-                        return RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+                        resp = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+                        return resp
                 else:
                     print("Access denied by unified rule, redirecting to pricing")
                     return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
@@ -510,6 +516,18 @@ def gmail_oauth2callback(code: str, state: str):
                 
                 # Unified access check for brand new user
                 if user_can_access_dashboard(new_user_data):
+                    # Resolve user id
+                    try:
+                        new_user_id = new_user_ref[1].id  # type: ignore[index]
+                    except Exception:
+                        docs2 = users_ref.where("email", "==", user_email).limit(1).get()
+                        new_user_id = docs2[0].id if docs2 else ""
+                    # Create session
+                    if new_user_id:
+                        session_token = create_session_jwt(new_user_id)
+                        resp = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+                        set_session_cookie(resp, session_token)
+                        return resp
                     return RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
                 else:
                     return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
@@ -533,6 +551,10 @@ def gmail_oauth2callback(code: str, state: str):
             user_id = state
             try:
                 resp = RedirectResponse(url=f"{FRONTEND_URL}/payment")
+                # Ensure session cookie exists
+                if user_id:
+                    session_token = create_session_jwt(user_id)
+                    set_session_cookie(resp, session_token)
                 return resp
             except Exception:
                 return RedirectResponse(url=f"{FRONTEND_URL}/payment")
