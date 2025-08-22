@@ -1,5 +1,6 @@
 import React from "react";
 import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { DashboardRoute } from "./components/DashboardRoute";
 import { InboxHeader } from "./components/InboxHeader";
 import { InboxHeaderUser } from "./components/InboxHeaderUser";
 import { InboxSidebar } from "./components/InboxSidebar";
@@ -11,27 +12,36 @@ import { Dashboard } from "./components/Dashboard";
 import { Consent } from "./components/Consent";
 import { PaymentSuccess } from "./components/PaymentSuccess";
 import { getStoredUser, canAccessDashboard, syncAuthFromSession } from "./utils/auth";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 
 // Inbox Component
 import { isAuthenticated } from "./utils/auth";
 
 function Inbox() {
-  const authed = isAuthenticated();
+  const [authReady, setAuthReady] = useState(false);
+
+  // Sync from server session once on mount; trigger rerender when done
   useEffect(() => {
-    // Attempt to sync auth from server session cookie on mount
-    syncAuthFromSession().then(() => {
-      // no-op; state derived from localStorage
-    });
-    // Auto-redirect home to dashboard if user now has access (e.g., after payment)
-    if (authed && canAccessDashboard(getStoredUser())) {
+    let mounted = true;
+    (async () => {
+      await syncAuthFromSession();
+      if (mounted) setAuthReady(true);
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  // After sync, decide redirect
+  useEffect(() => {
+    if (!authReady) return;
+    const authedNow = isAuthenticated();
+    if (authedNow && canAccessDashboard(getStoredUser())) {
       window.history.replaceState({}, document.title, '/dashboard');
       window.location.href = '/dashboard';
     }
-  }, [authed]);
+  }, [authReady]);
   return (
     <div className="min-h-screen bg-gray-50">
-      {authed ? <InboxHeaderUser /> : <InboxHeader />}
+      {isAuthenticated() ? <InboxHeaderUser /> : <InboxHeader />}
       <div className="flex">
         <InboxSidebar />
         <InboxContent />
@@ -63,10 +73,7 @@ export default function App() {
         <Route path="/consent" element={<Consent />} />
         <Route path="/payment-success" element={<PaymentSuccess />} />
         <Route path="/oauth-callback" element={<OAuthCallback />} />
-        <Route
-          path="/dashboard"
-          element={canAccessDashboard(getStoredUser()) ? <Dashboard /> : <Navigate to="/" replace />}
-        />
+        <Route path="/dashboard" element={<DashboardRoute><Dashboard /></DashboardRoute>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Router>
