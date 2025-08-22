@@ -1,3 +1,4 @@
+import { API_BASE } from './api';
 export type UserData = {
   subscription_status?: string;
   payment_completed?: boolean;
@@ -35,7 +36,6 @@ export function clearAuth(): void {
 }
 
 // Attempt to populate local auth from server session (httpOnly cookie)
-import { API_BASE } from './api';
 export async function syncAuthFromSession(): Promise<boolean> {
   try {
     const res = await fetch(`${API_BASE}/session/me`, { credentials: 'include' });
