@@ -10,7 +10,7 @@ import { PaymentPage } from "./components/PaymentPage";
 import { Dashboard } from "./components/Dashboard";
 import { Consent } from "./components/Consent";
 import { PaymentSuccess } from "./components/PaymentSuccess";
-import { getStoredUser, canAccessDashboard } from "./utils/auth";
+import { getStoredUser, canAccessDashboard, syncAuthFromSession } from "./utils/auth";
 import { useEffect } from "react";
 
 // Inbox Component
@@ -19,6 +19,10 @@ import { isAuthenticated } from "./utils/auth";
 function Inbox() {
   const authed = isAuthenticated();
   useEffect(() => {
+    // Attempt to sync auth from server session cookie on mount
+    syncAuthFromSession().then(() => {
+      // no-op; state derived from localStorage
+    });
     // Auto-redirect home to dashboard if user now has access (e.g., after payment)
     if (authed && canAccessDashboard(getStoredUser())) {
       window.history.replaceState({}, document.title, '/dashboard');

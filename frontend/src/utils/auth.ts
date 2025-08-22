@@ -34,6 +34,27 @@ export function clearAuth(): void {
   localStorage.removeItem(USER_KEY);
 }
 
+// Attempt to populate local auth from server session (httpOnly cookie)
+import { API_BASE } from './api';
+export async function syncAuthFromSession(): Promise<boolean> {
+  try {
+    const res = await fetch(`${API_BASE}/session/me`, { credentials: 'include' });
+    if (!res.ok) {
+      clearAuth();
+      return false;
+    }
+    const data = await res.json();
+    if (data && data.user_id && data.user_data) {
+      setAuth({ ...data.user_data, user_id: data.user_id });
+      return true;
+    }
+    clearAuth();
+    return false;
+  } catch {
+    return false;
+  }
+}
+
 export function canAccessDashboard(user: UserData | null): boolean {
   if (!user) return false;
   const nowSec = Math.floor(Date.now() / 1000);
