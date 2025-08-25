@@ -17,12 +17,22 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
         method: 'POST',
         credentials: 'include',
       });
+      if (!res.ok) {
+        if (res.status === 401) {
+          window.location.href = `${API_BASE}/auth/google`;
+          return;
+        }
+        console.error('Checkout error', res.status);
+        return;
+      }
       const data = await res.json();
       if (data && data.url) {
         window.location.href = data.url;
+      } else {
+        console.error('No checkout URL returned');
       }
-    } catch (_) {
-      // no-op
+    } catch (e) {
+      console.error('Checkout exception', e);
     }
   };
 
