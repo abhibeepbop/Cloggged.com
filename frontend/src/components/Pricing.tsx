@@ -12,28 +12,7 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
   const navigate = useNavigate();
   
   const handleStartFreeTrial = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/stripe/create-checkout`, {
-        method: 'POST',
-        credentials: 'include',
-      });
-      if (!res.ok) {
-        if (res.status === 401) {
-          window.location.href = `${API_BASE}/auth/google`;
-          return;
-        }
-        console.error('Checkout error', res.status);
-        return;
-      }
-      const data = await res.json();
-      if (data && data.url) {
-        window.location.href = data.url;
-      } else {
-        console.error('No checkout URL returned');
-      }
-    } catch (e) {
-      console.error('Checkout exception', e);
-    }
+    window.location.href = 'https://buy.stripe.com/00w8wP0XQ3bK4KH69KefC00';
   };
 
   const handleHomeClick = () => {

@@ -167,9 +167,7 @@ def set_session_cookie(response: JSONResponse, token: str):
     # Use secure cookies in production (cross-site Vercel ↔ Render)
     secure_flag = os.getenv("COOKIE_SECURE", "true").strip().lower() == "true"
     same_site = "none" if secure_flag else "lax"
-    # Scope cookie to frontend apex domain when provided to ensure it is sent on /api calls via Vercel
-    cookie_domain = os.getenv("COOKIE_DOMAIN", "").strip()
-    cookie_kwargs = dict(
+    response.set_cookie(
         key=SESSION_COOKIE_NAME,
         value=token,
         httponly=True,
@@ -178,16 +176,9 @@ def set_session_cookie(response: JSONResponse, token: str):
         max_age=SESSION_TTL_SECONDS,
         path="/",
     )
-    if cookie_domain:
-        cookie_kwargs["domain"] = cookie_domain
-    response.set_cookie(**cookie_kwargs)
 
 def clear_session_cookie(response: JSONResponse):
-    cookie_domain = os.getenv("COOKIE_DOMAIN", "").strip()
-    if cookie_domain:
-        response.delete_cookie(SESSION_COOKIE_NAME, path="/", domain=cookie_domain)
-    else:
-        response.delete_cookie(SESSION_COOKIE_NAME, path="/")
+    response.delete_cookie(SESSION_COOKIE_NAME, path="/")
 
 def get_session_user_id_or_401(request: Request) -> str:
     token = request.cookies.get(SESSION_COOKIE_NAME)
