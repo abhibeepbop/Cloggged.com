@@ -1,6 +1,7 @@
 
 import React from "react";
 import { useNavigate } from "react-router-dom";
+import { API_BASE } from "../utils/api";
 import { InboxHeaderUser } from "./InboxHeaderUser";
 
 interface PricingProps {
@@ -11,7 +12,18 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
   const navigate = useNavigate();
   
   const handleStartFreeTrial = async () => {
-    window.location.href = 'https://buy.stripe.com/test_bJe00jgWO6nW1yv9lWefC01';
+    try {
+      const res = await fetch(`${API_BASE}/stripe/create-checkout`, {
+        method: 'POST',
+        credentials: 'include',
+      });
+      const data = await res.json();
+      if (data && data.url) {
+        window.location.href = data.url;
+      }
+    } catch (_) {
+      // no-op
+    }
   };
 
   const handleHomeClick = () => {
