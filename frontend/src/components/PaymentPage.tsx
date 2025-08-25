@@ -46,7 +46,7 @@ export function PaymentPage() {
             onClick={() => navigate('/')}
             className="text-2xl font-bold tracking-tight text-white cursor-pointer hover:text-gray-200 transition-colors"
           >
-            Clogged.ai
+            cloggged.com
           </h1>
           <div className="flex gap-8">
             <button 

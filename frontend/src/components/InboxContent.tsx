@@ -107,7 +107,7 @@ export function InboxContent() {
             <div className="flex-1">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center space-x-5">
-                  <span className="font-semibold text-2xl text-gray-900">Clogged.ai</span>
+                  <span className="font-semibold text-2xl text-gray-900">cloggged.com</span>
                 </div>
               </div>
               <h2 className="text-4xl font-bold text-gray-900 mb-4">

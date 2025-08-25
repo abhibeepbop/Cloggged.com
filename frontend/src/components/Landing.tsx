@@ -13,7 +13,7 @@ export function Landing({ onGetStarted, onWatchDemo, onSignIn }: LandingProps) {
       {/* Header */}
       <header className="flex justify-between items-center px-8 py-6 border-b border-black">
         <div className="text-[24px] font-bold text-black">
-          Clogged.ai
+          cloggged.com
         </div>
         
         <nav className="flex gap-3">
@@ -44,7 +44,7 @@ export function Landing({ onGetStarted, onWatchDemo, onSignIn }: LandingProps) {
       <main className="flex-1 flex flex-col">
         {/* Hero Section */}
         <section className="text-center py-12 px-8">
-          <h1 className="text-[48px] font-bold text-black mb-4">Welcome to Clogged.ai</h1>
+          <h1 className="text-[48px] font-bold text-black mb-4">Welcome to cloggged.com</h1>
           <p className="text-[18px] text-gray-600 mb-8 max-w-2xl mx-auto">
             Powerful AI solutions to streamline your workflow and boost productivity
           </p>

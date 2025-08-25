@@ -33,7 +33,7 @@ export function InboxHeader() {
               className="text-xl text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
               onClick={() => navigate('/')}
             >
-              Clogged.ai
+              cloggged.com
             </span>
           </div>
         </div>
