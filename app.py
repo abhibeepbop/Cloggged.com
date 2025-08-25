@@ -492,8 +492,14 @@ def gmail_oauth2callback(code: str, state: str):
                         resp = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
                         return resp
                 else:
-                    print("Access denied by unified rule, redirecting to pricing")
-                    return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
+                    print("Access denied by unified rule, redirecting to pricing (keep session)")
+                    try:
+                        session_token = create_session_jwt(user_doc.id)
+                        resp = RedirectResponse(url=f"{FRONTEND_URL}/pricing")
+                        set_session_cookie(resp, session_token)
+                        return resp
+                    except Exception:
+                        return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
             else:
                 print(f"New user {user_email}, creating user record and redirecting appropriately")
                 # Create new user record with authflow set to True
@@ -515,22 +521,25 @@ def gmail_oauth2callback(code: str, state: str):
                 print(f"Created new user {user_email} with authflow=True")
                 
                 # Unified access check for brand new user
-                if user_can_access_dashboard(new_user_data):
-                    # Resolve user id
-                    try:
-                        new_user_id = new_user_ref[1].id  # type: ignore[index]
-                    except Exception:
-                        docs2 = users_ref.where("email", "==", user_email).limit(1).get()
-                        new_user_id = docs2[0].id if docs2 else ""
-                    # Create session
+                # Resolve user id for session regardless of access
+                try:
+                    new_user_id = new_user_ref[1].id  # type: ignore[index]
+                except Exception:
+                    docs2 = users_ref.where("email", "==", user_email).limit(1).get()
+                    new_user_id = docs2[0].id if docs2 else ""
+                try:
                     if new_user_id:
                         session_token = create_session_jwt(new_user_id)
-                        resp = RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
+                        # If they can access, send to dashboard; else send to pricing but keep session
+                        target = f"{FRONTEND_URL}/dashboard" if user_can_access_dashboard(new_user_data) else f"{FRONTEND_URL}/pricing"
+                        resp = RedirectResponse(url=target)
                         set_session_cookie(resp, session_token)
                         return resp
-                    return RedirectResponse(url=f"{FRONTEND_URL}/dashboard")
-                else:
-                    return RedirectResponse(url=f"{FRONTEND_URL}/pricing")
+                except Exception:
+                    pass
+                # Fallback redirect without cookie
+                target = f"{FRONTEND_URL}/dashboard" if user_can_access_dashboard(new_user_data) else f"{FRONTEND_URL}/pricing"
+                return RedirectResponse(url=target)
         else:
             # This is Gmail connection for existing user
             # Store tokens in Firestore under users/<uid>/gmail_tokens
