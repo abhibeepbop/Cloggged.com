@@ -1063,8 +1063,7 @@ def stripe_create_checkout(request: Request):
 @app.post("/stripe/confirm-session")
 def stripe_confirm_session(request: Request, session_id: str = Body(..., embed=True)):
     """Confirm a Stripe Checkout Session after redirect (Payment Link success URL).
-    Links the subscription to the currently signed-in user (from session cookie)."""
-    user_id = get_session_user_id_or_401(request)
+    Works with or without an existing server session: resolves user by cookie or email and sets a session cookie."""
     if not session_id:
         raise HTTPException(status_code=400, detail="Missing session_id")
     stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
@@ -1076,10 +1075,37 @@ def stripe_confirm_session(request: Request, session_id: str = Body(..., embed=T
         trial_end = subscription.get("trial_end")
         if not sub_id:
             raise HTTPException(status_code=400, detail="No subscription found on session")
+
+        # Resolve user: prefer server session cookie; fallback to Stripe customer email
         db = firestore.client()
-        doc_ref = db.collection("identifier").document(user_id)
-        if not doc_ref.get().exists:
-            raise HTTPException(status_code=404, detail="User not found")
+        resolved_user_id = None
+        try:
+            resolved_user_id = get_session_user_id_or_401(request)
+        except Exception:
+            resolved_user_id = None
+
+        doc_ref = None
+        if resolved_user_id:
+            tmp_ref = db.collection("identifier").document(resolved_user_id)
+            if tmp_ref.get().exists:
+                doc_ref = tmp_ref
+
+        if doc_ref is None:
+            email = None
+            cd = session.get("customer_details") or {}
+            if isinstance(cd, dict):
+                email = cd.get("email")
+            if not email:
+                email = session.get("customer_email")
+            if email:
+                docs = db.collection("identifier").where("email", "==", email).limit(1).get()
+                if docs:
+                    doc_ref = db.collection("identifier").document(docs[0].id)
+                    resolved_user_id = docs[0].id
+
+        if doc_ref is None:
+            return {"success": False, "error": "User not found for session"}
+
         update = {
             "subscription_status": "active",
             "subscribed": True,
@@ -1090,7 +1116,16 @@ def stripe_confirm_session(request: Request, session_id: str = Body(..., embed=T
         }
         update["can_access"] = _compute_can_access(update)
         doc_ref.set(update, merge=True)
-        return {"success": True, "user_id": user_id, "subscription_id": sub_id}
+
+        resp = JSONResponse({"success": True, "user_id": resolved_user_id, "subscription_id": sub_id})
+        # Ensure the browser has a valid session cookie for subsequent requests
+        try:
+            if resolved_user_id:
+                session_token = create_session_jwt(resolved_user_id)
+                set_session_cookie(resp, session_token)
+        except Exception:
+            pass
+        return resp
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e))
 
