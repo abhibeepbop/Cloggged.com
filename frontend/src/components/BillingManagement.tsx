@@ -207,7 +207,7 @@ export function BillingManagement() {
                     <AlertDialogHeader>
                       <AlertDialogTitle>Cancel Subscription</AlertDialogTitle>
                       <AlertDialogDescription>
-                        Are you sure you want to cancel your subscription? You'll lose access to premium features at the end of your current billing period ({getNextBillingDate()}).
+                        Are you sure you want to cancel your subscription? You'll lose access to standard features at the end of your current billing period ({getNextBillingDate()}).
                       </AlertDialogDescription>
                     </AlertDialogHeader>
                     <AlertDialogFooter>

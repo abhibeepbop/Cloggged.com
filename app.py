@@ -240,8 +240,10 @@ def _normalize_category(raw_category: str) -> str:
     if not raw_category:
         return "Other"
     c = str(raw_category).strip().lower()
-    if c in ['spam', 'not_spam', 'notspam']:
+    if c == 'spam':
         return 'Spam'
+    if c in ['not_spam', 'notspam', 'ham', 'nonspam', 'not spam']:
+        return 'Other'
     if c in ['work', 'professional', 'business']:
         return 'Work'
     if c in ['finance', 'financial', 'banking']:
@@ -308,6 +310,80 @@ def _get_monthly_processed_count(user_id: str) -> int:
         return total
     except Exception:
         return 0
+
+
+@app.post("/rebuild-stats")
+def rebuild_stats(request: Request, days: int = 30):
+    """Rebuild aggregated stats for the current user from existing email_classifications.
+    Time-windowed (default 30 days) to control reads. Uses same normalization as classifier.
+    """
+    user_id = get_session_user_id_or_401(request)
+    try:
+        from datetime import datetime, timedelta
+        db = firestore.client()
+        coll = db.collection('identifier').document(user_id).collection('email_classifications')
+
+        now_dt = datetime.utcnow().replace(tzinfo=None)
+        start_dt = now_dt - timedelta(days=max(int(days), 1))
+
+        # Fetch windowed docs; support both int seconds and Firestore Timestamp
+        docs = []
+        try:
+            q = coll.where('timestamp', '>=', int(start_dt.timestamp()))
+            docs = list(q.stream())
+        except Exception:
+            try:
+                q = coll.where('timestamp', '>=', start_dt)
+                docs = list(q.stream())
+            except Exception:
+                docs = list(coll.stream())
+
+        total = 0
+        spam_total = 0
+        category_counts: dict[str, int] = {}
+        daily: dict[str, dict] = {}
+
+        for d in docs:
+            data = d.to_dict() or {}
+            ts = data.get('timestamp')
+            if ts is None:
+                continue
+            if isinstance(ts, (int, float)):
+                # seconds vs ms
+                ts_sec = int(ts / 1000) if ts > 1000000000000 else int(ts)
+            else:
+                try:
+                    ts_sec = int(ts.timestamp())
+                except Exception:
+                    continue
+
+            from datetime import datetime as _dt
+            date_key = _dt.utcfromtimestamp(ts_sec).strftime('%Y-%m-%d')
+
+            raw_cat = str(data.get('classification') or '').strip()
+            cat = _normalize_category(raw_cat)
+
+            total += 1
+            category_counts[cat] = category_counts.get(cat, 0) + 1
+
+            entry = daily.get(date_key) or { 'processed': 0, 'spam': 0 }
+            entry['processed'] = int(entry['processed']) + 1
+            if cat == 'Spam' or raw_cat.lower() in {'spam', 'not_spam', 'notspam'}:
+                entry['spam'] = int(entry['spam']) + 1
+                spam_total += 1
+            daily[date_key] = entry
+
+        stats_ref = db.collection('identifier').document(user_id).collection('meta').document('stats')
+        update_doc = {
+            'total_processed': int(total),
+            'category_counts': {k: int(v) for k, v in category_counts.items()},
+            'daily': daily,
+            'updated_at': int(datetime.utcnow().timestamp()),
+        }
+        stats_ref.set(update_doc, merge=True)
+        return { 'success': True, 'recounted': int(total), 'categories': update_doc.get('category_counts', {}) }
+    except Exception as e:
+        return { 'success': False, 'error': str(e) }
 
 @app.get("/")
 def read_root(code: str = None, state: str = None):
@@ -1082,6 +1158,7 @@ def stripe_confirm_session(request: Request, session_id: str = Body(..., embed=T
         customer_id = session.get("customer")
         sub_id = subscription.get("id")
         trial_end = subscription.get("trial_end")
+        current_period_end = subscription.get("current_period_end")
         if not sub_id:
             raise HTTPException(status_code=400, detail="No subscription found on session")
 
@@ -1123,6 +1200,11 @@ def stripe_confirm_session(request: Request, session_id: str = Body(..., embed=T
             "trial_end": trial_end,
             "payment_completed": False,
         }
+        # Prefer trial_end as next billing during trial; otherwise use current_period_end if available
+        if isinstance(trial_end, int):
+            update["next_billing_date"] = trial_end
+        elif isinstance(current_period_end, int):
+            update["next_billing_date"] = current_period_end
         update["can_access"] = _compute_can_access(update)
         doc_ref.set(update, merge=True)
 

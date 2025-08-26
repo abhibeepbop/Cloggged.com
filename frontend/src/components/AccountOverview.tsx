@@ -107,7 +107,7 @@ export function AccountOverview() {
   const cancelsAt = (billingData as any)?.cancels_at || billingData?.trial_end || billingData?.next_billing_date
   const subscriptionData = {
     status,
-    plan: "£5.99/month",
+    plan: "Standard Plan • £5.99/month",
     nextBilling: getNextBillingDate(),
     trialDaysLeft: inTrial ? calculateDaysLeft(billingData?.trial_end) : null,
     isActive: (billingData?.subscribed || inTrial) && !isCancelling,
@@ -223,7 +223,7 @@ export function AccountOverview() {
               <div className="space-y-2">
                 <div className="text-2xl font-bold">{subscriptionData.plan}</div>
                 <p className="text-sm text-muted-foreground">
-                  Premium AI Email Sorting
+                  Standard AI Email Sorting
                 </p>
               </div>
             </CardContent>
@@ -257,7 +257,7 @@ export function AccountOverview() {
           <CardContent className="space-y-4">
             <div className="flex justify-between items-center">
               <div>
-                <h3 className="font-semibold">Premium Plan</h3>
+                <h3 className="font-semibold">Standard Plan</h3>
                 <p className="text-sm text-muted-foreground">£5.99/month</p>
               </div>
               <Badge variant="secondary" className={subscriptionData.isCancelling ? "bg-orange-100 text-orange-800" : (subscriptionData.status === 'Active' ? "bg-green-100 text-green-800" : "bg-gray-100 text-gray-800") }>
@@ -268,7 +268,7 @@ export function AccountOverview() {
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <span className="text-sm">Free Trial Ends</span>
-                <span className="text-sm text-muted-foreground">{subscriptionData.trialDaysLeft ? formatDate(billingData?.trial_end) : 'N/A'}</span>
+                <span className="text-sm text-muted-foreground">{billingData?.trial_end ? formatDate(billingData.trial_end) : 'N/A'}</span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-sm">Next Billing</span>
