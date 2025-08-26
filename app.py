@@ -1326,53 +1326,7 @@ def get_user_email_stats(user_id: str):
             except Exception:
                 classifications = firebase_manager.get_user_classifications(user_id)
 
-        # Prefer pre-aggregated stats for weekly chart if available
-        try:
-            stats_doc = db.collection('identifier').document(user_id).collection('meta').document('stats').get()
-            if stats_doc.exists:
-                stats = stats_doc.to_dict() or {}
-                today = now
-                daily = stats.get('daily') or {}
-                # Determine current week (Mon..Sun), include only completed days (exclude today)
-                week_start = today - timedelta(days=today.weekday())  # Monday
-                weekly_data = []
-                d = week_start
-                while d < end_dt:
-                    key = d.strftime('%Y-%m-%d')
-                    day_name = calendar.day_abbr[d.weekday()]
-                    entry = daily.get(key) or {}
-                    weekly_data.append({
-                        "day": day_name,
-                        "date": key,
-                        "processed": int(entry.get('processed') or 0),
-                        "spam": int(entry.get('spam') or 0),
-                    })
-                    d += timedelta(days=1)
-                # Category breakdown from category_counts
-                category_counts = stats.get('category_counts') or {}
-                total_processed = int(stats.get('total_processed') or 0)
-                breakdown = []
-                for cat, cnt in category_counts.items():
-                    cnt_i = int(cnt or 0)
-                    pct = (cnt_i / total_processed * 100) if total_processed > 0 else 0
-                    breakdown.append({"category": cat, "count": cnt_i, "percentage": round(pct, 1)})
-                breakdown.sort(key=lambda x: x['count'], reverse=True)
-                top_category = breakdown[0]['category'] if breakdown else "None"
-                # Monthly date range (1st .. yesterday)
-                return {
-                    "success": True,
-                    "stats": {
-                        "total_processed": total_processed,
-                        "spam_count": int(sum((daily.get(k) or {}).get('spam') or 0 for k in daily)),
-                        "accuracy": 94.7,
-                        "top_category": top_category,
-                        "category_breakdown": breakdown,
-                        "weekly_data": weekly_data,
-                        "date_range": f"{month_start.strftime('%b %d')} - { (end_dt - timedelta(days=1)).strftime('%b %d, %Y') }"
-                    }
-                }
-        except Exception:
-            pass
+        # Always compute from Firestore (last 30 days) for MVP
 
         # Convert and filter to current month window (already queried)
         monthly_classifications = []
@@ -1398,7 +1352,7 @@ def get_user_email_stats(user_id: str):
         
         # Use monthly data for statistics (1st .. yesterday)
         total_processed = len(monthly_classifications)
-        spam_count = len([c for c in monthly_classifications if c.get('classification', '').lower() in ['spam', 'not_spam', 'notspam']])
+        spam_count = len([c for c in monthly_classifications if str(c.get('classification', '')).strip().lower() == 'spam'])
         
         # Category breakdown for current month
         category_counts = {}
@@ -1407,7 +1361,7 @@ def get_user_email_stats(user_id: str):
             
             # Normalize category names to fix overlapping labels
             category = category.strip().lower()
-            if category in ['spam', 'not_spam', 'notspam']:
+            if category == 'spam':
                 category = 'Spam'
             elif category in ['work', 'professional', 'business']:
                 category = 'Work'
@@ -1465,7 +1419,7 @@ def get_user_email_stats(user_id: str):
                 entry = { 'processed': 0, 'spam': 0 }
                 by_day[day_key] = entry
             entry['processed'] += 1
-            if str(c.get('classification', '')).lower() in ['spam', 'not_spam', 'notspam']:
+            if str(c.get('classification', '')).strip().lower() == 'spam':
                 entry['spam'] += 1
 
         d = week_start
