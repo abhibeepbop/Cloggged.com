@@ -84,9 +84,25 @@ export function GmailIntegration() {
     
     setSyncInProgress(true)
     try {
-      // Get user ID from localStorage or context
-      const userDataFromStorage = JSON.parse(localStorage.getItem('userData') || '{}')
-      const userId = userDataFromStorage.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2'
+      // Resolve user ID from localStorage, then fallback to /session/me
+      let userId = ''
+      try {
+        const uds = JSON.parse(localStorage.getItem('userData') || '{}')
+        userId = uds.user_id || uds.uid || ''
+      } catch {}
+      if (!userId) {
+        try {
+          const me = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
+          if (me.ok) {
+            const data = await me.json()
+            userId = data?.user_id || ''
+          }
+        } catch {}
+      }
+      if (!userId) {
+        setSyncInProgress(false)
+        return
+      }
       
       console.log('Triggering manual sync for user:', userId)
       const response = await fetch(`${API_BASE}/trigger-user-sync/${userId}`, {
@@ -94,6 +110,7 @@ export function GmailIntegration() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
       })
       
       const result = await response.json()
@@ -101,7 +118,7 @@ export function GmailIntegration() {
       
       if (result.success) {
         // Refresh user data to get updated last_sync
-      const userResponse = await fetch(`${API_BASE}/debug-user/${userId}`)
+      const userResponse = await fetch(`${API_BASE}/debug-user/${userId}`, { credentials: 'include' })
         const userResult = await userResponse.json()
         
         if (userResult.success) {
@@ -120,8 +137,24 @@ export function GmailIntegration() {
     
     setPauseLoading(true)
     try {
-      const userDataFromStorage = JSON.parse(localStorage.getItem('userData') || '{}')
-      const userId = userDataFromStorage.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2'
+      let userId = ''
+      try {
+        const uds = JSON.parse(localStorage.getItem('userData') || '{}')
+        userId = uds.user_id || uds.uid || ''
+      } catch {}
+      if (!userId) {
+        try {
+          const me = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
+          if (me.ok) {
+            const data = await me.json()
+            userId = data?.user_id || ''
+          }
+        } catch {}
+      }
+      if (!userId) {
+        setPauseLoading(false)
+        return
+      }
       
       // Determine if we're pausing or resuming
       const shouldEnable = processingPaused
@@ -137,6 +170,7 @@ export function GmailIntegration() {
         headers: {
           'Content-Type': 'application/json',
         },
+        credentials: 'include',
       })
       
       console.log(`Response status: ${response.status}`)
@@ -148,7 +182,7 @@ export function GmailIntegration() {
         setProcessingPaused(!shouldEnable) // Toggle the paused state
         
         // Refresh user data
-        const userResponse = await fetch(`http://localhost:8000/debug-user/${userId}`)
+        const userResponse = await fetch(`${API_BASE}/debug-user/${userId}`, { credentials: 'include' })
         const userResult = await userResponse.json()
         
           if (userResult.success) {
