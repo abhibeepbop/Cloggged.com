@@ -1399,8 +1399,8 @@ def get_user_email_stats(user_id: str):
         # Sort by count descending
         category_breakdown.sort(key=lambda x: x['count'], reverse=True)
         
-        # Weekly chart: current week (Mon..Sun), include completed days only
-        week_start = now - timedelta(days=now.weekday())
+        # Weekly chart: use week start at midnight (Mon..Sun), exclude today
+        week_start = today_midnight - timedelta(days=today_midnight.weekday())
         weekly_data = []
         # Build a dict for counts from monthly_classifications
         by_day = {}
