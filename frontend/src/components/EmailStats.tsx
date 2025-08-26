@@ -52,7 +52,7 @@ export function EmailStats() {
         }
         // console.log('EmailStats - User ID:', userId)
         
-        const response = await fetch(`${API_BASE}/user/${userId}/email-stats`)
+        const response = await fetch(`${API_BASE}/user/${userId}/email-stats`, { credentials: 'include' })
         const result = await response.json()
         
         console.log('EmailStats - Response:', result)

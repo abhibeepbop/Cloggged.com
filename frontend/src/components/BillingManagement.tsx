@@ -176,7 +176,7 @@ export function BillingManagement() {
             <CardContent className="space-y-4">
               <div className="flex justify-between items-center">
                 <div>
-                  <h3 className="font-semibold">Premium Plan</h3>
+                  <h3 className="font-semibold">Standard Plan</h3>
                   <p className="text-sm text-muted-foreground">£5.99/month</p>
                 </div>
                 <Badge variant="secondary" className="bg-green-100 text-green-800">
