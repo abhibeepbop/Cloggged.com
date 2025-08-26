@@ -118,34 +118,44 @@ export function AccountOverview() {
   const handleCancelSubscription = async () => {
     setCancelling(true)
     try {
-      const userData = JSON.parse(localStorage.getItem('userData') || '{}')
-      const userId = userData.uid || 'Ekpd3Bvr5Ght5Cc00T7EezlH3Hf2'
-      
-      console.log('Cancelling subscription for user:', userId)
-      
+      // Resolve user id from session first, fallback to localStorage
+      let userId = ''
+      try {
+        const me = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
+        if (me.ok) {
+          const data = await me.json()
+          userId = data?.user_id || ''
+        }
+      } catch {}
+      if (!userId) {
+        try {
+          const ls = JSON.parse(localStorage.getItem('userData') || '{}')
+          userId = ls.user_id || ls.uid || ''
+        } catch {}
+      }
+      if (!userId) {
+        alert('Unable to determine user. Please sign in again.')
+        setCancelling(false)
+        return
+      }
+
       const response = await fetch(`${API_BASE}/cancel-subscription`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
+        headers: { 'Content-Type': 'application/json' },
         credentials: 'include',
       })
-      
+
       const result = await response.json()
-      console.log('Cancel subscription result:', result)
-      
-      if (result.success) {
-        // Refresh billing data
-        const billingResponse = await fetch(`${API_BASE}/user/${userId}/billing-data`)
+      if (result?.success) {
+        // Refresh billing data to reflect "Cancelling" and date
+        const billingResponse = await fetch(`${API_BASE}/user/${userId}/billing-data`, { credentials: 'include' })
         const billingResult = await billingResponse.json()
-        
-        if (billingResult.success) {
+        if (billingResult?.success) {
           setBillingData(billingResult.billing_data)
         }
-        
         alert('Subscription cancelled successfully. You will not be charged again.')
       } else {
-        alert('Failed to cancel subscription: ' + result.error)
+        alert('Failed to cancel subscription: ' + (result?.error || 'Unknown error'))
       }
     } catch (error) {
       console.error('Error cancelling subscription:', error)
