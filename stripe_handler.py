@@ -163,6 +163,19 @@ class StripeHandler:
                 subscription = event['data']['object']
                 # Handle subscription creation (trial started)
                 return self.handle_subscription_created(subscription)
+            elif event['type'] == 'customer.subscription.updated':
+                subscription = event['data']['object']
+                try:
+                    status = subscription.get('status')
+                except Exception:
+                    status = None
+                if status == 'canceled':
+                    return self.handle_subscription_deleted(subscription)
+                # No-op for other updates
+                return {'status': 'subscription_updated', 'subscription_id': subscription.get('id'), 'stripe_status': status}
+            elif event['type'] == 'customer.subscription.deleted':
+                subscription = event['data']['object']
+                return self.handle_subscription_deleted(subscription)
             elif event['type'] == 'customer.subscription.trial_will_end':
                 subscription = event['data']['object']
                 # Handle trial ending soon
@@ -200,6 +213,39 @@ class StripeHandler:
     def handle_subscription_created(self, subscription):
         """Handle subscription creation (trial started)"""
         return self._upsert_user_from_subscription(subscription)
+
+    def handle_subscription_deleted(self, subscription):
+        """Mark subscription as cancelled in Firestore when Stripe ends it."""
+        try:
+            from firebase_admin import firestore as _fs
+            db = _fs.client()
+            customer_id = subscription.get('customer')
+            # Find user by customer_id
+            users_ref = db.collection("identifier")
+            docs = users_ref.where("customer_id", "==", customer_id).limit(1).get()
+            if not docs:
+                # fallback by email on subscription
+                email = None
+                try:
+                    email = subscription.get('metadata', {}).get('customer_email')
+                except Exception:
+                    pass
+                if email:
+                    docs = users_ref.where("email", "==", email).limit(1).get()
+            if not docs:
+                return {"status": "no_user_match", "customer_id": customer_id}
+            user_ref = users_ref.document(docs[0].id)
+            update = {
+                "subscription_status": "inactive",
+                "subscribed": False,
+                "payment_completed": False,
+                "cancel_at_period_end": False,
+                "can_access": False,
+            }
+            user_ref.set(update, merge=True)
+            return {"status": "subscription_cancelled", "user_id": user_ref.id}
+        except Exception as e:
+            return {"status": "subscription_cancelled", "error": str(e)}
 
     def _upsert_user_from_subscription(self, subscription: dict, email_override: str | None = None, user_id_override: str | None = None) -> Dict[str, Any]:
         try:

@@ -1192,16 +1192,18 @@ def stripe_confirm_session(request: Request, session_id: str = Body(..., embed=T
         if doc_ref is None:
             return {"success": False, "error": "User not found for session"}
 
+        # Reflect Stripe status accurately; do not grant full access until first payment
+        stripe_status = subscription.get("status")
         update = {
-            "subscription_status": "active",
-            "subscribed": True,
+            "subscription_status": stripe_status or "trialing",
+            "subscribed": False,  # will become True on first invoice.payment_succeeded
             "subscription_id": sub_id,
             "customer_id": customer_id,
             "trial_end": trial_end,
             "payment_completed": False,
         }
-        # Prefer trial_end as next billing during trial; otherwise use current_period_end if available
-        if isinstance(trial_end, int):
+        # Prefer trial_end as next billing during trial; otherwise current_period_end
+        if isinstance(trial_end, int) and (stripe_status == "trialing" or stripe_status is None):
             update["next_billing_date"] = trial_end
         elif isinstance(current_period_end, int):
             update["next_billing_date"] = current_period_end
@@ -1455,12 +1457,85 @@ def get_user_email_stats(user_id: str):
 def get_user_billing_data(user_id: str):
     """Get user billing data including trial and billing dates"""
     try:
-        firebase_manager = FirebaseManager()
-        billing_data = firebase_manager.get_user_billing_data(user_id)
-        if billing_data:
-            return {"success": True, "billing_data": billing_data}
-        else:
+        db = firestore.client()
+        doc_ref = db.collection("identifier").document(user_id)
+        snap = doc_ref.get()
+        if not snap.exists:
             return {"success": False, "error": "User not found"}
+
+        user = snap.to_dict() or {}
+        trial_end = user.get("trial_end")
+        next_billing_date = user.get("next_billing_date")
+
+        # If trial_end is missing but we have a subscription/customer, fetch from Stripe
+        if not trial_end:
+            try:
+                stripe.api_key = os.getenv("STRIPE_SECRET_KEY")
+                subscription_id = user.get("subscription_id")
+                customer_id = user.get("customer_id")
+                sub = None
+                if subscription_id:
+                    sub = stripe.Subscription.retrieve(subscription_id)
+                elif customer_id:
+                    subs = stripe.Subscription.list(customer=customer_id, status="all", limit=10)
+                    # Prefer active/trialing, else most recent
+                    chosen = None
+                    for s in subs.auto_paging_iter():
+                        if s.get("status") in ("active", "trialing"):
+                            chosen = s
+                            break
+                    if not chosen:
+                        items = list(subs)
+                        if items:
+                            chosen = items[0]
+                    sub = chosen
+                if sub:
+                    se = sub.get("trial_end")
+                    cpe = sub.get("current_period_end")
+                    status = sub.get("status")
+                    if isinstance(se, int):
+                        trial_end = se
+                    # Set next_billing_date using trial_end during trial, else current period end
+                    if status == "trialing" and isinstance(se, int):
+                        next_billing_date = se
+                    elif isinstance(cpe, int):
+                        next_billing_date = cpe
+                    # Persist back to Firestore
+                    update = {}
+                    if trial_end is not None:
+                        update["trial_end"] = trial_end
+                    if next_billing_date is not None:
+                        update["next_billing_date"] = next_billing_date
+                    if update:
+                        doc_ref.set(update, merge=True)
+            except Exception:
+                pass
+
+        # Fallback compute next_billing_date if still missing
+        if not next_billing_date:
+            try:
+                from datetime import datetime as _dt
+                if user.get("trial_end"):
+                    te = int(user.get("trial_end"))
+                    now_s = int(_dt.utcnow().timestamp())
+                    next_billing_date = te if te > now_s else te + (30 * 24 * 60 * 60)
+                elif user.get("payment_date"):
+                    next_billing_date = int(user.get("payment_date")) + (30 * 24 * 60 * 60)
+            except Exception:
+                next_billing_date = None
+
+        return {
+            "success": True,
+            "billing_data": {
+                "trial_start": user.get("trial_start"),
+                "trial_end": trial_end or user.get("trial_end"),
+                "payment_date": user.get("payment_date"),
+                "next_billing_date": next_billing_date,
+                "subscription_status": user.get("subscription_status"),
+                "subscribed": user.get("subscribed"),
+                "payment_completed": user.get("payment_completed"),
+            },
+        }
     except Exception as e:
         return {"success": False, "error": str(e)}
 
