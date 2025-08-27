@@ -550,8 +550,19 @@ def gmail_oauth2callback(code: str, state: str):
                 print(f"Free trial: {user_data.get('free_trial')}")
                 print(f"Subscribed: {user_data.get('subscribed')}")
                 
-                # Set authflow/consent to True since user has granted access during Google sign-in
-                user_doc.reference.update({"authflow": True, "consent": True})
+                # Persist Gmail tokens on initial sign-in as well (automate connection)
+                try:
+                    existing_tokens = (user_data or {}).get("gmail_tokens") or {}
+                    if not tokens.get("refresh_token"):
+                        tokens["refresh_token"] = existing_tokens.get("refresh_token")
+                    user_doc.reference.update({
+                        "gmail_tokens": tokens,
+                        "authflow": True,
+                        "consent": True
+                    })
+                    print("Stored gmail_tokens on initial sign-in and set authflow=True")
+                except Exception as e:
+                    print(f"Error storing gmail_tokens on sign-in: {e}")
                 print(f"Set authflow to True for user {user_email}")
                 
                 # Unified access check
@@ -588,6 +599,8 @@ def gmail_oauth2callback(code: str, state: str):
                     "subscription_status": "inactive",
                     "created_at": int(datetime.utcnow().timestamp()),
                     "email_processing_enabled": True,
+                    # Persist Gmail tokens for new users on sign-in
+                    "gmail_tokens": tokens,
                     "authflow": True,
                     "consent": True
                 }
@@ -738,6 +751,15 @@ def process_user(user_doc, verbose: bool = False):
         print(f"Email processing disabled for user: {user_email}")
         return
     
+    if debug:
+        try:
+            scopes = (tokens or {}).get('scopes') or []
+            print(f"Gmail token scopes present: {scopes}")
+            print(f"Has gmail.modify: {'https://www.googleapis.com/auth/gmail.modify' in scopes}")
+            print(f"Has refresh_token: {bool((tokens or {}).get('refresh_token'))}")
+        except Exception:
+            pass
+
     if not tokens:
         print(f"No Gmail tokens found for user: {user_email}")
         return
@@ -803,6 +825,9 @@ def process_user(user_doc, verbose: bool = False):
             if debug:
                 print(f"Commercial query: {query}")
                 print(f"Only excluding our labels: {[label['name'] for label in found_labels]}")
+        else:
+            if debug:
+                print("No classification labels found to exclude; using bare 'in:inbox' query")
         
         # Enforce monthly cap: stop processing if user exceeded 10,000 emails this month
         monthly_cap = _get_env_int("MONTHLY_EMAIL_CAP", 10000)
@@ -821,6 +846,8 @@ def process_user(user_doc, verbose: bool = False):
             'q': query
         }
         
+        if debug:
+            print(f"Request params: {request_params}")
         results = service.users().messages().list(**request_params).execute()
         messages = results.get('messages', [])
         
@@ -943,6 +970,8 @@ def process_user(user_doc, verbose: bool = False):
                     result = email_classifier.classify_single_email(subject, snippet, email['id'])
                     classification = result.get('classification', 'Spam')
                     confidence = result.get('confidence', 0.5)
+                    if debug:
+                        print(f"Classified {email['id'][:20]}... as '{classification}' (conf={confidence})")
                     
                     # Store in Firebase
                     success = firebase_manager.store_email_classification(
@@ -955,6 +984,8 @@ def process_user(user_doc, verbose: bool = False):
                     if success:
                         # Apply Gmail label
                         label_success = apply_gmail_label(service, email['id'], classification, found_labels)
+                        if debug:
+                            print(f"Applied label result for {email['id'][:20]}...: {label_success}")
                         
                         # Update timestamp
                         db = firestore.client()
@@ -1010,7 +1041,12 @@ def apply_gmail_label(service, email_id, classification, found_labels):
                 'addLabelIds': ['SPAM'],
                 'removeLabelIds': ['INBOX']
             }
-            service.users().messages().modify(userId='me', id=email_id, body=modify_body).execute()
+            try:
+                service.users().messages().modify(userId='me', id=email_id, body=modify_body).execute()
+                print(f"Moved {email_id[:20]}... to SPAM and removed INBOX")
+            except Exception as e:
+                print(f"  Error moving to SPAM for {email_id[:20]}...: {e}")
+                return False
             return True
 
         # Resolve/create proper Gmail label ID for this classification
@@ -1025,12 +1061,17 @@ def apply_gmail_label(service, email_id, classification, found_labels):
                     label_id = label.get('id')
                     break
             if not label_id:
-                print(f"  No label found for classification: {classification}")
+                print(f"  No label found for classification: {classification} (mapped: {mapped_name})")
                 return False
 
         # Apply the label
         modify_body = { 'addLabelIds': [label_id] }
-        service.users().messages().modify(userId='me', id=email_id, body=modify_body).execute()
+        try:
+            service.users().messages().modify(userId='me', id=email_id, body=modify_body).execute()
+            print(f"  Applied label id {label_id} for {email_id[:20]}...")
+        except Exception as e:
+            print(f"  Error applying label id {label_id} to {email_id[:20]}...: {e}")
+            return False
         return True
 
     except Exception as e:
