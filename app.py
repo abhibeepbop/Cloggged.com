@@ -120,7 +120,7 @@ def verify_firebase_token(request: Request):
 
 # Unified access check used across auth flows
 def user_can_access_dashboard(user_data: dict) -> bool:
-    """Return True if the user should see the dashboard (active sub or active trial)."""
+    """Return True if the user should see the dashboard (active subscription, trialing, or cancel-pending)."""
     try:
         now_ts = int(datetime.utcnow().timestamp())
     except Exception:
@@ -135,17 +135,34 @@ def user_can_access_dashboard(user_data: dict) -> bool:
             return value.strip().lower() in {"true", "1", "yes", "y"}
         return False
 
-    # Relaxed rule: subscribed flag OR free trial is enough (coerce string/number values)
-    has_active_subscription = to_bool(user_data.get("subscribed")) or (
-        user_data.get("subscription_status") == "active" and to_bool(user_data.get("payment_completed"))
-    )
-
+    status = str(user_data.get("subscription_status") or "").strip().lower()
+    subscribed_flag = to_bool(user_data.get("subscribed"))
+    payment_completed = to_bool(user_data.get("payment_completed"))
     trial_end = user_data.get("trial_end")
-    in_free_trial = to_bool(user_data.get("free_trial")) or (
-        isinstance(trial_end, (int, float)) and trial_end > now_ts
+    next_billing_date = user_data.get("next_billing_date")
+    cancel_at_period_end = to_bool(user_data.get("cancel_at_period_end"))
+    cancels_at = user_data.get("cancels_at")
+
+    # Active subscription access
+    has_active_subscription = bool(
+        subscribed_flag or (status in {"active", "past_due"} and payment_completed)
     )
 
-    return bool(has_active_subscription or in_free_trial)
+    # Trial access
+    in_free_trial = False
+    if isinstance(trial_end, (int, float)) and trial_end > now_ts:
+        in_free_trial = True
+    elif status == "trialing" and isinstance(next_billing_date, (int, float)) and next_billing_date > now_ts:
+        in_free_trial = True
+    elif to_bool(user_data.get("free_trial")):
+        in_free_trial = True
+
+    # Cancel pending: allow until cancels_at
+    cancel_pending_access = bool(
+        cancel_at_period_end and isinstance(cancels_at, (int, float)) and cancels_at > now_ts
+    )
+
+    return bool(has_active_subscription or in_free_trial or cancel_pending_access)
 
 # --- Session (JWT) helpers ---
 import jwt
@@ -227,10 +244,41 @@ def _compute_can_access(user: dict) -> bool:
         now_ts = int(datetime.utcnow().timestamp())
     except Exception:
         now_ts = 0
-    subscribed = bool(user.get("subscribed") is True)
+
+    def to_bool(value) -> bool:
+        if isinstance(value, bool):
+            return value
+        if isinstance(value, (int, float)):
+            return value == 1
+        if isinstance(value, str):
+            return value.strip().lower() in {"true", "1", "yes", "y"}
+        return False
+
+    status = str(user.get("subscription_status") or "").strip().lower()
+    subscribed_flag = to_bool(user.get("subscribed"))
+    payment_completed = to_bool(user.get("payment_completed"))
     trial_end = user.get("trial_end")
-    in_trial = isinstance(trial_end, (int, float)) and trial_end > now_ts
-    return bool(subscribed or in_trial)
+    next_billing_date = user.get("next_billing_date")
+    cancel_at_period_end = to_bool(user.get("cancel_at_period_end"))
+    cancels_at = user.get("cancels_at")
+
+    has_active_subscription = bool(
+        subscribed_flag or (status in {"active", "past_due"} and payment_completed)
+    )
+
+    in_trial = False
+    if isinstance(trial_end, (int, float)) and trial_end > now_ts:
+        in_trial = True
+    elif status == "trialing" and isinstance(next_billing_date, (int, float)) and next_billing_date > now_ts:
+        in_trial = True
+    elif to_bool(user.get("free_trial")):
+        in_trial = True
+
+    cancel_pending_access = bool(
+        cancel_at_period_end and isinstance(cancels_at, (int, float)) and cancels_at > now_ts
+    )
+
+    return bool(has_active_subscription or in_trial or cancel_pending_access)
 
 # --- Session (JWT) helpers ---
  
@@ -1603,11 +1651,9 @@ def trigger_user_sync(user_id: str, verbose: bool = True):
         
         user_data = user_doc.to_dict()
         
-        # Check if user has active access (free trial or subscribed)
-        free_trial = user_data.get('free_trial', False)
-        subscribed = user_data.get('subscribed', False)
-        
-        if not free_trial and not subscribed:
+        # Unified access check (trial_end in future OR subscribed true)
+        has_access = _compute_can_access(user_data)
+        if not has_access:
             return {"success": False, "error": "No active access - free trial or subscription required"}
         
         # Process only this specific user
