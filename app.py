@@ -712,6 +712,7 @@ def gmail_oauth2callback(code: str, state: str):
 
 def get_gmail_service_for_user(uid):
     db = firestore.client()
+    print(f"get_gmail_service_for_user: fetching user by id '{uid}'")
     user_ref = db.collection("identifier").document(uid)
     user_doc = user_ref.get()
     if not user_doc.exists:
@@ -764,7 +765,14 @@ stripe_handler = StripeHandler()
 
 def process_user(user_doc, verbose: bool = False):
     user_data = user_doc.to_dict()
-    user_id = user_data.get('uid') or user_doc.id
+    # Always use Firestore document ID as canonical user ID
+    user_id = user_doc.id
+    try:
+        embedded_uid = user_data.get('uid')
+        if embedded_uid and embedded_uid != user_id:
+            print(f"Warning: user doc embedded uid '{embedded_uid}' != doc.id '{user_id}'. Using doc.id.")
+    except Exception:
+        pass
     user_email = user_data.get('email', 'unknown@email.com')
     tokens = user_data.get('gmail_tokens')
     print(f"Processing user: {user_email}")
