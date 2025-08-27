@@ -723,12 +723,10 @@ def process_user(user_doc, verbose: bool = False):
     debug = verbose or (user_email == 'vabhi9930@gmail.com')
     
     
-    # Check if user has active access (free trial or subscribed)
-    free_trial = user_data.get('free_trial', False)
-    subscribed = user_data.get('subscribed', False)
-    
-    if not free_trial and not subscribed:
-        print(f"User {user_email} has no active access (free_trial: {free_trial}, subscribed: {subscribed}), skipping")
+    # Check if user has active access using unified rule (subscribed or in trial by trial_end)
+    has_access = _compute_can_access(user_data)
+    if not has_access:
+        print(f"User {user_email} has no active access (subscribed or trial), skipping")
         return
     
     # Check if email processing is enabled for this user
