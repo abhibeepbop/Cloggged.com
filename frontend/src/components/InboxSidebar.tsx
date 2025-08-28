@@ -1,7 +1,7 @@
 import React from "react";
 import { Button } from "./ui/button";
 import { Badge } from "./ui/badge";
-import { Inbox, Star, Send, FileText, Trash2, Briefcase, Wallet, Shield, KeyRound, Users, AlertTriangle } from "lucide-react";
+import { Inbox, Star, Send, FileText, Trash2, Wallet, Shield, AlertTriangle, Clock, Calendar, ClipboardList } from "lucide-react";
 import { Separator } from "./ui/separator";
 import { useNavigate } from "react-router-dom";
 
@@ -13,12 +13,12 @@ export function InboxSidebar() {
     { icon: Send, label: "Sent" },
     { icon: FileText, label: "Drafts", count: 12 },
     { icon: Trash2, label: "Spam", count: 0, highlight: true },
-    { icon: Briefcase, label: "Work", count: 156 },
-    { icon: Wallet, label: "Finance", count: 42 },
-    { icon: Shield, label: "Security", count: 8 },
-    { icon: KeyRound, label: "OTPs", count: 15 },
-    { icon: Users, label: "Family", count: 23 },
     { icon: AlertTriangle, label: "Urgent", count: 5 },
+    { icon: Clock, label: "Waiting on Others", count: 12 },
+    { icon: Calendar, label: "Meeting Updates", count: 7 },
+    { icon: Wallet, label: "Finances", count: 42 },
+    { icon: Shield, label: "Security (OTPs / Logins)", count: 8 },
+    { icon: ClipboardList, label: "Project Details", count: 156 },
   ];
 
   return (
