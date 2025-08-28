@@ -27,25 +27,23 @@ class EmailClassifier:
             
             prompt = [
                 SystemMessage(content=(
-                    "You are an email classifier. Analyze the email and respond with ONLY one of these categories:\n"
-                    "- 'Work' - Professional emails, meetings, deadlines, work-related communications\n"
-                    "- 'Finance' - Banking, invoices, payments, receipts, financial transactions\n"
-                    "- 'Security' - Login alerts, password resets, 2FA codes, account security\n"
-                    "- 'OTPs' - One-time passwords, verification codes, authentication codes\n"
-                    "- 'Family' - Personal emails from family members, close friends\n"
-                    "- 'Urgent' - Time-sensitive communications, immediate action required\n"
-                    "- 'Spam' - Unwanted emails, marketing, promotional content, newsletters\n\n"
-                    "Classification rules:\n"
-                    "- If the email is a reply to a previous email, consider the context\n"
-                    "- If unsure between categories, choose the most specific one\n"
-                    "- If truly unclear or unwanted, classify as 'Spam'\n"
-                    "- Emails about money, banking, purchases = 'Finance'\n"
-                    "- Emails about account access, security alerts = 'Security'\n"
-                    "- Emails with verification codes, OTPs = 'OTPs'\n"
-                    "- Emails requiring immediate attention = 'Urgent'\n"
-                    "- Work-related emails, professional communications = 'Work'\n"
-                    "- Personal emails from family/friends = 'Family'\n\n"
-                    "Respond with exactly one word from the categories above."
+                    "You are an email classifier. Respond with ONLY one of these categories (exact text):\n"
+                    "- 'Urgent / Action Required' – Time-sensitive and needs attention now (client escalations, manager requests, last-minute approvals).\n"
+                    "- 'Waiting on Others' – You can’t progress until someone else replies (follow-ups, blockers).\n"
+                    "- 'Projects / Workstreams / Meetings' – Project/task updates, deliverables, standups, and meeting info.\n"
+                    "- 'Clients / External' – Communication with customers, partners, or vendors (any external party).\n"
+                    "- 'Finance & Admin' – Invoices, expenses, HR updates, payroll, policies, ops.\n"
+                    "- 'Security & Systems' – OTPs/login codes, system alerts, IT notifications.\n"
+                    "- 'Spam' – Unwanted marketing/promotions/newsletters or irrelevant bulk email.\n\n"
+                    "Rules:\n"
+                    "- If login/security/OTP/system alert → 'Security & Systems'\n"
+                    "- If finance/HR/expenses/policies → 'Finance & Admin'\n"
+                    "- If meetings/tasks/project updates → 'Projects / Workstreams / Meetings'\n"
+                    "- If external parties/clients/vendors → 'Clients / External'\n"
+                    "- If waiting for a reply to proceed → 'Waiting on Others'\n"
+                    "- If urgent and time-sensitive → 'Urgent / Action Required'\n"
+                    "- If obviously unwanted promotions/newsletters/ads → 'Spam'\n\n"
+                    "Respond with exactly one category string above, no extra text."
                 )),
                 HumanMessage(content=f"Subject: {subject}\n\nSnippet: {snippet}")
             ]
@@ -54,34 +52,92 @@ class EmailClassifier:
                 response = self.llm.invoke(prompt)
                 classification = response.content.strip().lower()
                 
-                # Map variations to standard categories
+                # Map variations/synonyms to the new standard categories
                 category_mapping = {
-                    'work': 'Work',
-                    'professional': 'Work',
-                    'business': 'Work',
-                    'finance': 'Finance', 
-                    'financial': 'Finance',
-                    'banking': 'Finance',
-                    'security': 'Security',
-                    'secure': 'Security',
-                    'account': 'Security',
-                    'otps': 'OTPs',
-                    'otp': 'OTPs',
-                    'verification': 'OTPs',
-                    'code': 'OTPs',
-                    'family': 'Family',
-                    'personal': 'Family',
-                    'friends': 'Family',
-                    'urgent': 'Urgent',
-                    'important': 'Urgent',
-                    'priority': 'Urgent',
+                    'urgent': 'Urgent / Action Required',
+                    'urgent / action required': 'Urgent / Action Required',
+                    'important': 'Urgent / Action Required',
+                    'asap': 'Urgent / Action Required',
+                    'priority': 'Urgent / Action Required',
+
+                    'waiting': 'Waiting on Others',
+                    'waiting on others': 'Waiting on Others',
+                    'awaiting': 'Waiting on Others',
+                    'blocked': 'Waiting on Others',
+                    'follow-up': 'Waiting on Others',
+                    'follow up': 'Waiting on Others',
+
+                    'meeting': 'Projects / Workstreams / Meetings',
+                    'meetings': 'Projects / Workstreams / Meetings',
+                    'calendar': 'Projects / Workstreams / Meetings',
+                    'invite': 'Projects / Workstreams / Meetings',
+                    'schedule': 'Projects / Workstreams / Meetings',
+                    'reschedule': 'Projects / Workstreams / Meetings',
+                    'reminder': 'Projects / Workstreams / Meetings',
+                    'project': 'Projects / Workstreams / Meetings',
+                    'projects': 'Projects / Workstreams / Meetings',
+                    'task': 'Projects / Workstreams / Meetings',
+                    'tasks': 'Projects / Workstreams / Meetings',
+                    'ticket': 'Projects / Workstreams / Meetings',
+                    'issue': 'Projects / Workstreams / Meetings',
+                    'details': 'Projects / Workstreams / Meetings',
+                    'spec': 'Projects / Workstreams / Meetings',
+
+                    'client': 'Clients / External',
+                    'clients': 'Clients / External',
+                    'customer': 'Clients / External',
+                    'customers': 'Clients / External',
+                    'vendor': 'Clients / External',
+                    'vendors': 'Clients / External',
+                    'partner': 'Clients / External',
+                    'partners': 'Clients / External',
+                    'external': 'Clients / External',
+
+                    'finance': 'Finance & Admin',
+                    'finances': 'Finance & Admin',
+                    'financial': 'Finance & Admin',
+                    'banking': 'Finance & Admin',
+                    'invoice': 'Finance & Admin',
+                    'invoices': 'Finance & Admin',
+                    'payment': 'Finance & Admin',
+                    'payments': 'Finance & Admin',
+                    'receipt': 'Finance & Admin',
+                    'billing': 'Finance & Admin',
+                    'hr': 'Finance & Admin',
+                    'payroll': 'Finance & Admin',
+                    'policy': 'Finance & Admin',
+                    'policies': 'Finance & Admin',
+
+                    'security': 'Security & Systems',
+                    'login': 'Security & Systems',
+                    'logins': 'Security & Systems',
+                    'password': 'Security & Systems',
+                    '2fa': 'Security & Systems',
+                    'mfa': 'Security & Systems',
+                    'otp': 'Security & Systems',
+                    'otps': 'Security & Systems',
+                    'verification': 'Security & Systems',
+                    'code': 'Security & Systems',
+                    'alert': 'Security & Systems',
+                    'system': 'Security & Systems',
+                    'systems': 'Security & Systems',
+                    'it': 'Security & Systems',
+                    'ops': 'Security & Systems',
+
                     'spam': 'Spam',
-                    'not_spam': 'Spam',  # Consolidate to Spam
-                    'notspam': 'Spam'    # Consolidate to Spam
+                    'promotion': 'Spam',
+                    'promotions': 'Spam',
+                    'newsletter': 'Spam',
+                    'newsletters': 'Spam',
+                    'marketing': 'Spam',
+                    'ads': 'Spam',
+                    'advertisement': 'Spam',
+                    'deal': 'Spam',
+                    'sale': 'Spam',
                 }
                 
-                # Get the mapped category or default to Work
-                classification = category_mapping.get(classification, 'Work')
+                # Get the mapped category or default to Project Details
+                classification = category_mapping.get(classification, 'Projects / Workstreams / Meetings')
                 
                 return {
                     'email_id': email_data.get('email_id'),
@@ -96,7 +152,7 @@ class EmailClassifier:
                     'email_id': email_data.get('email_id'),
                     'subject': subject,
                     'snippet': snippet,
-                    'classification': 'Spam',  # Default to spam on error
+                    'classification': 'Projects / Workstreams / Meetings',
                     'confidence': 0.5
                 }
         
@@ -123,7 +179,7 @@ class EmailClassifier:
             'email_id': email_data.get('email_id'),
             'subject': email_data.get('subject', ''),
             'snippet': email_data.get('snippet', ''),
-            'classification': 'Spam',
+            'classification': 'Projects / Workstreams / Meetings',
             'confidence': 0.5
         }
 

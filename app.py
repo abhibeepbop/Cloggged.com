@@ -288,23 +288,19 @@ def _normalize_category(raw_category: str) -> str:
     if not raw_category:
         return "Other"
     c = str(raw_category).strip().lower()
-    if c == 'spam':
-        return 'Spam'
-    if c in ['not_spam', 'notspam', 'ham', 'nonspam', 'not spam']:
-        return 'Other'
-    if c in ['work', 'professional', 'business']:
-        return 'Work'
-    if c in ['finance', 'financial', 'banking']:
-        return 'Finance'
-    if c in ['security', 'secure', 'account']:
-        return 'Security'
-    if c in ['otps', 'otp', 'verification', 'code']:
-        return 'OTPs'
-    if c in ['family', 'personal', 'friends']:
-        return 'Family'
-    if c in ['urgent', 'important', 'priority']:
-        return 'Urgent'
-    return 'Other'
+    if c in ['urgent', 'important', 'priority', 'asap']:
+        return 'Urgent / Action Required'
+    if c in ['waiting', 'waiting on others', 'awaiting', 'blocked', 'follow-up', 'follow up']:
+        return 'Waiting on Others'
+    if c in ['meeting', 'meetings', 'calendar', 'invite', 'schedule', 'reschedule', 'reminder', 'project', 'projects', 'task', 'tasks', 'ticket', 'issue', 'details', 'spec']:
+        return 'Projects / Workstreams / Meetings'
+    if c in ['finances', 'finance', 'financial', 'banking', 'invoice', 'invoices', 'payment', 'payments', 'receipt', 'billing', 'hr', 'payroll', 'policy', 'policies']:
+        return 'Finance & Admin'
+    if c in ['security', 'login', 'logins', 'password', '2fa', 'mfa', 'otp', 'otps', 'verification', 'code', 'alert', 'system', 'systems', 'it', 'ops']:
+        return 'Security & Systems'
+    if c in ['client', 'clients', 'customer', 'customers', 'vendor', 'vendors', 'partner', 'partners', 'external']:
+        return 'Clients / External'
+    return 'Projects / Workstreams / Meetings'
 
 
 def _update_user_stats_on_classification(user_id: str, classification: str, ts_seconds: int) -> None:
@@ -822,8 +818,16 @@ def process_user(user_doc, verbose: bool = False):
         service = get_gmail_service_for_user(user_id)
         print(f"Gmail service initialized for user: {user_email}")
         
-        # Define classification labels
-        classification_labels = ['Work', 'Finance', 'Security', 'OTPs', 'Family', 'Urgent', 'Spam']
+        # Define classification labels (new set)
+        classification_labels = [
+            'Urgent / Action Required',
+            'Waiting on Others',
+            'Projects / Workstreams / Meetings',
+            'Clients / External',
+            'Finance & Admin',
+            'Security & Systems',
+            'Spam'
+        ]
         
         # Get existing Gmail labels
         all_labels = service.users().labels().list(userId='me').execute().get('labels', [])
@@ -842,7 +846,7 @@ def process_user(user_doc, verbose: bool = False):
         # Now find ALL labels that match our classification categories
         for label in all_labels:
             # Check if this label matches any of our classification categories
-            if label['name'] in classification_labels or label['name'] == 'OTP':  # Handle OTPs -> OTP mapping
+            if label['name'] in classification_labels or label['name'] == 'OTP':
                 classification_label_ids.append(label['id'])
                 found_labels.append({
                     'name': label['name'],
@@ -870,8 +874,7 @@ def process_user(user_doc, verbose: bool = False):
         if debug:
             print("Using commercial approach: exclude only our classification labels")
         
-        # Build query to exclude only our specific classification labels
-        # not user created labels works but not good for other users (if they already have labels)
+        # Build query to exclude only our specific classification labels by name
         query = 'in:inbox'
         if found_labels:
             for label in found_labels:
@@ -1451,29 +1454,11 @@ def get_user_email_stats(user_id: str):
         total_processed = len(monthly_classifications)
         spam_count = len([c for c in monthly_classifications if str(c.get('classification', '')).strip().lower() == 'spam'])
         
-        # Category breakdown for current month
+        # Category breakdown for current month (normalize to new labels)
         category_counts = {}
         for classification in monthly_classifications:
-            category = classification.get('classification', 'Other')
-            
-            # Normalize category names to fix overlapping labels
-            category = category.strip().lower()
-            if category == 'spam':
-                category = 'Spam'
-            elif category in ['work', 'professional', 'business']:
-                category = 'Work'
-            elif category in ['finance', 'financial', 'banking']:
-                category = 'Finance'
-            elif category in ['security', 'secure', 'account']:
-                category = 'Security'
-            elif category in ['otps', 'otp', 'verification', 'code']:
-                category = 'OTPs'
-            elif category in ['family', 'personal', 'friends']:
-                category = 'Family'
-            elif category in ['urgent', 'important', 'priority']:
-                category = 'Urgent'
-            else:
-                category = 'Other'
+            raw = str(classification.get('classification', '')).strip()
+            category = _normalize_category(raw)
             
             category_counts[category] = category_counts.get(category, 0) + 1
         
@@ -1679,7 +1664,12 @@ def trigger_user_sync(user_id: str, verbose: bool = True):
 def get_or_create_label(service, label_name):
     # Gmail label mapping (AI output -> Gmail label name)
     gmail_label_mapping = {
-        'OTPs': 'OTP'  # Gmail doesn't like "OTPs", use "OTP" instead
+        'Urgent / Action Required': 'Urgent',
+        'Waiting on Others': 'Waiting on Others',
+        'Projects / Workstreams / Meetings': 'Projects / Workstreams / Meetings',
+        'Clients / External': 'Clients / External',
+        'Finance & Admin': 'Finance & Admin',
+        'Security & Systems': 'Security & Systems'
     }
     
     # Use Gmail label name if mapping exists, otherwise use original
