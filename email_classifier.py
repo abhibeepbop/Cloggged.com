@@ -42,8 +42,16 @@ class EmailClassifier:
                     "- If external parties/clients/vendors → 'Clients / External'\n"
                     "- If waiting for a reply to proceed → 'Waiting on Others'\n"
                     "- If urgent and time-sensitive → 'Urgent / Action Required'\n"
-                    "- If obviously unwanted promotions/newsletters/ads → 'Spam'\n\n"
-                    "Respond with exactly one category string above, no extra text."
+                    "- If obviously unwanted promotions/newsletters/ads or anything that the user might have subscribed to accidentally → 'Spam'\n\n"
+                    "Signals (keywords that strongly indicate a category):\n"
+                    "- Security & Systems: otp, one-time password, verification code, 2fa, mfa, login, password, security alert, suspicious activity, system alert, it, ops.\n"
+                    "- Finance & Admin: invoice, receipt, billing, payment, payroll, expense, hr, policy, bank, statement, refund, tax.\n"
+                    "- Urgent / Action Required: urgent, asap, immediately, action required, need your approval, deadline.\n"
+                    "- Waiting on Others: waiting on, awaiting, blocked, following up, follow-up, gentle reminder, pending your.\n"
+                    "- Clients / External: client, customer, vendor, partner, external.\n"
+                    "- Projects / Workstreams / Meetings: meeting, calendar, invite, schedule, reschedule, reminder, standup, project, task, ticket, spec.\n"
+                    "- Spam: unsubscribe, newsletter, marketing, promotion, sale, deal, offer, advertisement.\n\n"
+                    "Choose the single best category based on these signals and the content. If signals conflict, prefer the strongest signal matching the core intent. Respond with exactly one category string, nothing else."
                 )),
                 HumanMessage(content=f"Subject: {subject}\n\nSnippet: {snippet}")
             ]
@@ -51,9 +59,51 @@ class EmailClassifier:
             try:
                 response = self.llm.invoke(prompt)
                 classification = response.content.strip().lower()
+
+                # Heuristic override for obvious buckets based on keywords (ordered)
+                text = f"{subject} {snippet}".lower()
+                spam_kw = [
+                    'unsubscribe', 'newsletter', 'marketing', 'promotion', 'promotions', 'sale', 'deal', 'offer', 'special offer', 'limited time', 'ad '
+                ]
+                security_kw = [
+                    'otp', 'one-time password', 'one time password', 'verification code', '2fa', 'mfa',
+                    'login', 'log in', 'signin', 'sign-in', 'password', 'security alert', 'suspicious', 'unusual activity',
+                    'google verification code', 'auth code', 'verification required'
+                ]
+                finance_kw = [
+                    'invoice', 'invoices', 'receipt', 'billing', 'payment', 'payroll', 'expense', 'expenses',
+                    'hr', 'policy', 'policies', 'bank', 'statement', 'refund', 'tax'
+                ]
+                urgent_kw = ['urgent', 'asap', 'immediately', 'action required', 'need your approval', 'deadline']
+                waiting_kw = ['waiting on', 'awaiting', 'blocked', 'pending your', 'following up', 'follow-up', 'gentle reminder']
+                clients_kw = ['client', 'customer', 'vendor', 'partner', 'external']
+                meetings_kw = ['meeting', 'calendar', 'invite', 'schedule', 'reschedule', 'reminder', 'standup', 'stand-up']
+
+                if any(k in text for k in spam_kw):
+                    classification = 'spam'
+                elif any(k in text for k in security_kw):
+                    classification = 'security & systems'
+                elif any(k in text for k in finance_kw):
+                    classification = 'finance & admin'
+                elif any(k in text for k in urgent_kw):
+                    classification = 'urgent / action required'
+                elif any(k in text for k in waiting_kw):
+                    classification = 'waiting on others'
+                elif any(k in text for k in clients_kw):
+                    classification = 'clients / external'
+                elif any(k in text for k in meetings_kw):
+                    classification = 'projects / workstreams / meetings'
                 
                 # Map variations/synonyms to the new standard categories
                 category_mapping = {
+                    # Exact phrase self-maps (model may return the exact category)
+                    'urgent / action required': 'Urgent / Action Required',
+                    'waiting on others': 'Waiting on Others',
+                    'projects / workstreams / meetings': 'Projects / Workstreams / Meetings',
+                    'clients / external': 'Clients / External',
+                    'finance & admin': 'Finance & Admin',
+                    'security & systems': 'Security & Systems',
+
                     'urgent': 'Urgent / Action Required',
                     'urgent / action required': 'Urgent / Action Required',
                     'important': 'Urgent / Action Required',
@@ -136,8 +186,8 @@ class EmailClassifier:
                     'sale': 'Spam',
                 }
                 
-                # Get the mapped category or default to Project Details
-                classification = category_mapping.get(classification, 'Projects / Workstreams / Meetings')
+                # Get the mapped category; do not fallback to a bucket
+                classification = category_mapping.get(classification, classification)
                 
                 return {
                     'email_id': email_data.get('email_id'),
@@ -152,7 +202,7 @@ class EmailClassifier:
                     'email_id': email_data.get('email_id'),
                     'subject': subject,
                     'snippet': snippet,
-                    'classification': 'Projects / Workstreams / Meetings',
+                    'classification': 'Spam',
                     'confidence': 0.5
                 }
         
@@ -179,7 +229,7 @@ class EmailClassifier:
             'email_id': email_data.get('email_id'),
             'subject': email_data.get('subject', ''),
             'snippet': email_data.get('snippet', ''),
-            'classification': 'Projects / Workstreams / Meetings',
+            'classification': 'Spam',
             'confidence': 0.5
         }
 

@@ -18,6 +18,7 @@ const EmailStats = lazy(() => import("./EmailStats").then(m => ({ default: m.Ema
 export function Dashboard() {
   const [activeSection, setActiveSection] = useState("overview")
   const [user, setUser] = useState(null)
+  const [userEmail, setUserEmail] = useState<string | null>(null)
   const navigate = useNavigate()
 
   useEffect(() => {
@@ -78,6 +79,19 @@ export function Dashboard() {
     }
   }
 
+  // Fetch current user's email from server session
+  useEffect(() => {
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/session/me`, { credentials: 'include' })
+        if (res.ok) {
+          const data = await res.json()
+          setUserEmail(data?.user_data?.email || null)
+        }
+      } catch {}
+    })()
+  }, [])
+
   // Show loading while checking authentication
   if (!user) {
     return (
@@ -115,7 +129,7 @@ export function Dashboard() {
         <Sidebar className="mt-16">
           <SidebarContent>
             <SidebarGroup>
-              <SidebarGroupLabel>MailSort AI Dashboard</SidebarGroupLabel>
+              <SidebarGroupLabel>Cloggged.com</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
                   {menuItems.map((item) => (
@@ -146,6 +160,11 @@ export function Dashboard() {
           
           <div className="flex-1 p-6 overflow-auto">
             <div className="max-w-7xl mx-auto">
+              {(
+                <div className="mb-4 text-lg font-semibold text-gray-900">
+                  {`Welcome${userEmail ? ` ${userEmail}` : ''}`}
+                </div>
+              )}
               <Suspense fallback={<div className="p-4 text-gray-600">Loading…</div>}>
                 {renderContent()}
               </Suspense>

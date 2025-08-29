@@ -1141,7 +1141,7 @@ def background_email_job():
     users = list(db.collection('identifier').stream())
     
     # Process emails for users with access
-    worker_count = _get_env_int("SCHEDULER_WORKERS", 5)
+    worker_count = _get_env_int("SCHEDULER_WORKERS", 20)
     with ThreadPoolExecutor(max_workers=worker_count) as executor:
         executor.map(process_user, users)
     
