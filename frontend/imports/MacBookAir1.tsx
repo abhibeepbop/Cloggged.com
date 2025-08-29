@@ -95,7 +95,7 @@ export default function MacBookAir1() {
         <p className="block leading-[normal] whitespace-pre">Reviews</p>
       </div>
       <div className="absolute font-['Inter:Regular',_sans-serif] font-normal leading-[0] left-[768px] not-italic text-[#000000] text-[24px] text-left text-nowrap top-[586px]">
-        <p className="block leading-[normal] whitespace-pre">Watch demo</p>
+        <p className="block leading-[normal] whitespace-pre">How it works</p>
       </div>
       <div className="absolute bg-[#ffffff] h-[233px] left-[133px] rounded-[53px] top-[845px] w-[298px]">
         <div className="absolute border-4 border-[#000000] border-solid inset-0 pointer-events-none rounded-[53px]" />

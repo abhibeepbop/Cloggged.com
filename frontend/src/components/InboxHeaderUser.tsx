@@ -60,7 +60,7 @@ export function InboxHeaderUser() {
 
         <div className="flex items-center gap-3 md:gap-4">
           <Button variant="outline" size="sm">
-            Watch demo
+            How it works
           </Button>
 
           {authed && canDash ? (

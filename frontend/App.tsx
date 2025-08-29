@@ -115,7 +115,7 @@ export default function App() {
             onClick={handleWatchDemo}
             className="bg-[#79d3e7] hover:bg-[#6bc5db] border-2 border-black rounded-[33px] px-8 py-3 text-[18px] transition-colors"
           >
-            Watch demo
+            How it works
           </button>
         </section>
 

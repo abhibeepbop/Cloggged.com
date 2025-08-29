@@ -88,7 +88,7 @@ export function Pricing({ onStartFreeTrial }: PricingProps) {
           <button 
             className="bg-[#79D3E7] hover:bg-[#6bc5db] border-2 border-navy-800 rounded-full px-8 py-3 text-lg font-semibold text-black transition-colors"
           >
-            Watch demo
+            How it works
           </button>
         </div>
 

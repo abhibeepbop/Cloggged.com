@@ -153,7 +153,7 @@ export function Dashboard() {
           <header className="border-b bg-white px-6 py-4 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-4">
               <SidebarTrigger />
-              <h1 className="text-xl font-semibold text-gray-900">MailSort AI Dashboard</h1>
+              <h1 className="text-xl font-semibold text-gray-900">cloggged.com</h1>
             </div>
             <QuickActions />
           </header>

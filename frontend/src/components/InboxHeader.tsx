@@ -49,8 +49,8 @@ export function InboxHeader() {
         </div>
 
         <div className="flex items-center space-x-3">
-          <Button variant="outline" size="sm">
-            Watch demo
+          <Button variant="outline" size="sm" onClick={() => navigate('/how-it-works')}>
+            How it works
           </Button>
           {!authed && (
             <>

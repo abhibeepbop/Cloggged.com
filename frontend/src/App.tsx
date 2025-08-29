@@ -50,6 +50,61 @@ function Inbox() {
   );
 }
 
+function HowItWorks() {
+  return (
+    <div className="min-h-screen bg-gray-50">
+      {isAuthenticated() ? <InboxHeaderUser /> : <InboxHeader />}
+      <div className="max-w-5xl mx-auto px-4 py-12">
+        <div className="space-y-8">
+          <div className="space-y-2">
+            <h1 className="text-3xl font-bold text-gray-900">How it works</h1>
+            <p className="text-gray-600">
+              The agent connects to Gmail, classifies incoming mail into clear folders (Urgent, Finance & Admin, Security & Systems, etc.),
+              moves obvious spam out of your inbox, and keeps your inbox tidy automatically.
+            </p>
+          </div>
+
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-gray-900">Get started</h2>
+            <div className="grid gap-4 md:grid-cols-2">
+              <div className="bg-white border rounded-lg p-4 shadow-sm">
+                <div className="text-sm text-gray-500">Step 1</div>
+                <div className="font-medium text-gray-900">Sign in with Google</div>
+                <p className="text-sm text-gray-600 mt-1">Use the Sign in / Get started button to authenticate.</p>
+              </div>
+              <div className="bg-white border rounded-lg p-4 shadow-sm">
+                <div className="text-sm text-gray-500">Step 2</div>
+                <div className="font-medium text-gray-900">Grant Gmail access</div>
+                <p className="text-sm text-gray-600 mt-1">On first use, approve Gmail permissions. If prompted later, go to Dashboard → Gmail Integration → Reconnect Gmail.</p>
+              </div>
+              <div className="bg-white border rounded-lg p-4 shadow-sm">
+                <div className="text-sm text-gray-500">Step 3</div>
+                <div className="font-medium text-gray-900">Start your trial</div>
+                <p className="text-sm text-gray-600 mt-1">Complete checkout to enable continuous processing.</p>
+              </div>
+              <div className="bg-white border rounded-lg p-4 shadow-sm">
+                <div className="text-sm text-gray-500">Step 4</div>
+                <div className="font-medium text-gray-900">Manual sync (optional)</div>
+                <p className="text-sm text-gray-600 mt-1">Dashboard → Gmail Integration → Sync Now to process immediately.</p>
+              </div>
+              <div className="bg-white border rounded-lg p-4 shadow-sm">
+                <div className="text-sm text-gray-500">Step 5</div>
+                <div className="font-medium text-gray-900">Automatic processing</div>
+                <p className="text-sm text-gray-600 mt-1">The agent runs hourly and processes recent inbox emails automatically.</p>
+              </div>
+              <div className="bg-white border rounded-lg p-4 shadow-sm">
+                <div className="text-sm text-gray-500">Step 6</div>
+                <div className="font-medium text-gray-900">Manage access</div>
+                <p className="text-sm text-gray-600 mt-1">Dashboard → Account Overview to manage billing or cancel anytime.</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // Pricing Page Component
 function PricingPage() {
   const handleStartFreeTrial = () => {
@@ -68,6 +123,7 @@ export default function App() {
       <Routes>
         <Route path="/" element={<Inbox />} />
         <Route path="/inbox" element={<Inbox />} />
+        <Route path="/how-it-works" element={<HowItWorks />} />
         <Route path="/pricing" element={<PricingPage />} />
         <Route path="/payment" element={<PaymentPage />} />
         <Route path="/consent" element={<Consent />} />

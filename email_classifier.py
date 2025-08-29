@@ -50,7 +50,7 @@ class EmailClassifier:
                     "- Waiting on Others: waiting on, awaiting, blocked, following up, follow-up, gentle reminder, pending your.\n"
                     "- Clients / External: client, customer, vendor, partner, external.\n"
                     "- Projects / Workstreams / Meetings: meeting, calendar, invite, schedule, reschedule, reminder, standup, project, task, ticket, spec.\n"
-                    "- Spam: unsubscribe, newsletter, marketing, promotion, sale, deal, offer, advertisement.\n\n"
+                    "- Spam: unsubscribe, newsletter, marketing, promotion, sale, deal, offer, advertisement. any streaming service mail thats not related to finance. anything the user has subscribed to thats not about their subscription ending due to a payment. any website or platform that the user may have subscribed to that give out repetitive automates emails, examples: netflix, amazon prime, spotify, apple music, linkedin, instagram, tiktok, etc.\n\n"
                     "Choose the single best category based on these signals and the content. If signals conflict, prefer the strongest signal matching the core intent. Respond with exactly one category string, nothing else."
                 )),
                 HumanMessage(content=f"Subject: {subject}\n\nSnippet: {snippet}")

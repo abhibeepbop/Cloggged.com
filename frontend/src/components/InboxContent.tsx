@@ -126,7 +126,7 @@ export function InboxContent() {
                     Get started
                   </Button>
                   <Button variant="outline" className="text-lg px-7 py-4">
-                    Watch demo
+                    How it works
                   </Button>
                 </div>
               </div>
@@ -197,7 +197,7 @@ export function InboxContent() {
               Get started
             </Button>
             <Button variant="outline">
-              Watch demo
+              How it works
             </Button>
           </div>
         </div>
