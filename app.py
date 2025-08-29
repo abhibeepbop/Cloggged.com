@@ -870,21 +870,9 @@ def process_user(user_doc, verbose: bool = False):
             if debug:
                 print("No classification labels found yet")
         
-        # Commercial approach: Only exclude our specific classification labels
+        # Use ID-based exclusion only; do not override query with names
         if debug:
-            print("Using commercial approach: exclude only our classification labels")
-        
-        # Build query to exclude only our specific classification labels by name
-        query = 'in:inbox'
-        if found_labels:
-            for label in found_labels:
-                query += f' NOT label:{label["name"]}'
-            if debug:
-                print(f"Commercial query: {query}")
-                print(f"Only excluding our labels: {[label['name'] for label in found_labels]}")
-        else:
-            if debug:
-                print("No classification labels found to exclude; using bare 'in:inbox' query")
+            print(f"Using ID-based exclusion only. Query: {query}")
         
         # Enforce monthly cap: stop processing if user exceeded 10,000 emails this month
         monthly_cap = _get_env_int("MONTHLY_EMAIL_CAP", 10000)
