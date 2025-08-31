@@ -818,7 +818,7 @@ def process_user(user_doc, verbose: bool = False):
         service = get_gmail_service_for_user(user_id)
         print(f"Gmail service initialized for user: {user_email}")
         
-        # Define classification labels (new set)
+        # Define classification labels (human-readable)
         classification_labels = [
             'Urgent / Action Required',
             'Waiting on Others',
@@ -828,6 +828,8 @@ def process_user(user_doc, verbose: bool = False):
             'Security & Systems',
             'Spam'
         ]
+        # Normalized set (spaces removed) to match Gmail labels created without spaces
+        classification_labels_normalized = {name.replace(' ', '') for name in classification_labels}
         
         # Get existing Gmail labels
         all_labels = service.users().labels().list(userId='me').execute().get('labels', [])
@@ -843,29 +845,28 @@ def process_user(user_doc, verbose: bool = False):
             for label in all_labels:
                 print(f"  {label['name']} (ID: {label['id']}, Type: {label.get('type', 'unknown')})")
         
-        # Now find ALL labels that match our classification categories
+        # Now find ALL labels that match our classification categories (compare with spaces removed)
         for label in all_labels:
             # Check if this label matches any of our classification categories
-            if label['name'] in classification_labels or label['name'] == 'OTP':
+            label_name = label['name']
+            if label_name.replace(' ', '') in classification_labels_normalized or label_name == 'OTP':
                 classification_label_ids.append(label['id'])
                 found_labels.append({
-                    'name': label['name'],
+                    'name': label_name,
                     'id': label['id'],
                     'type': label.get('type', 'unknown')
                 })
                 if debug:
                     print(f"Found classification label: {label['name']} (ID: {label['id']}, Type: {label.get('type', 'unknown')})")
         
-        # Build query: prefer name-based NOT label:<name>; fallback to ID-based NOT label:<id>
+        # Do not rename labels in Gmail; we match by normalized names instead
+
+        # Build query: use name-based exclusion only; if no names, just in:inbox
         name_based_query = 'in:inbox'
         if found_labels:
             for label in found_labels:
-                name_based_query += f' NOT label:{label["name"]}'
-
-        id_based_query = 'in:inbox'
-        if classification_label_ids:
-            for label_id in classification_label_ids:
-                id_based_query += f' NOT label:{label_id}'
+                # Quote names to handle spaces/special characters
+                name_based_query += f' -label:"{label["name"]}"'
 
         if found_labels:
             query = name_based_query
@@ -873,10 +874,9 @@ def process_user(user_doc, verbose: bool = False):
                 print(f"Using name-based exclusion. Names: {[label['name'] for label in found_labels]}")
                 print(f"FINAL QUERY: {query}")
         else:
-            query = id_based_query
+            query = 'in:inbox'
             if debug:
-                print("No label names available; falling back to ID-based exclusion")
-                print(f"Label IDs to exclude: {classification_label_ids}")
+                print("No label names available; using minimal query 'in:inbox'")
                 print(f"FINAL QUERY: {query}")
         
         # Enforce monthly cap: stop processing if user exceeded 10,000 emails this month
