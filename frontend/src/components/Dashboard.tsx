@@ -153,7 +153,10 @@ export function Dashboard() {
           <header className="border-b bg-white px-6 py-4 flex items-center justify-between shadow-sm">
             <div className="flex items-center gap-4">
               <SidebarTrigger />
-              <h1 className="text-xl font-semibold text-gray-900">cloggged.com</h1>
+              <div className="flex items-center gap-2">
+                <img src="/cloggged_logo.png" alt="Logo" className="block h-10 w-15" />
+                <h1 className="text-xl leading-none font-semibold text-gray-900">cloggged.com</h1>
+              </div>
             </div>
             <QuickActions />
           </header>

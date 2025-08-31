@@ -42,12 +42,10 @@ export function PaymentPage() {
       {/* Header */}
       <header className="border-b border-navy-800 shadow-md bg-navy-900">
         <div className="max-w-7xl mx-auto px-6 py-5 flex justify-between items-center">
-          <h1 
-            onClick={() => navigate('/')}
-            className="text-2xl font-bold tracking-tight text-white cursor-pointer hover:text-gray-200 transition-colors"
-          >
-            cloggged.com
-          </h1>
+          <div className="flex items-center gap-2 cursor-pointer" onClick={() => navigate('/') }>
+            <img src="/cloggged_logo.png" alt="Logo" className="h-8 w-8" />
+            <h1 className="text-2xl font-normal tracking-tight text-white hover:text-gray-200 transition-colors">cloggged.com</h1>
+          </div>
           <div className="flex gap-8">
             <button 
               onClick={() => navigate('/')}

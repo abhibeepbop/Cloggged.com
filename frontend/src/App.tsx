@@ -62,6 +62,9 @@ function HowItWorks() {
               The agent connects to Gmail, classifies incoming mail into clear folders (Urgent, Finance & Admin, Security & Systems, etc.),
               moves obvious spam out of your inbox, and keeps your inbox tidy automatically.
             </p>
+            <p className="text-red-700 font-medium">
+              The agent does not store any of your emails or data. All emails are processed locally and removed. The agent does not delete any emails; spam is only moved to your Spam folder.
+            </p>
           </div>
 
           <div className="space-y-4">
@@ -69,33 +72,33 @@ function HowItWorks() {
             <div className="grid gap-4 md:grid-cols-2">
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <div className="text-sm text-gray-500">Step 1</div>
-                <div className="font-medium text-gray-900">Sign in with Google</div>
-                <p className="text-sm text-gray-600 mt-1">Use the Sign in / Get started button to authenticate.</p>
+                <div className="font-medium text-gray-900 text-lg">Sign in with Google</div>
+                <p className="text-base text-gray-600 mt-1">Use the Sign in / Get started button to authenticate.</p>
               </div>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <div className="text-sm text-gray-500">Step 2</div>
-                <div className="font-medium text-gray-900">Grant Gmail access</div>
-                <p className="text-sm text-gray-600 mt-1">On first use, approve Gmail permissions. If prompted later, go to Dashboard → Gmail Integration → Reconnect Gmail.</p>
+                <div className="font-medium text-gray-900 text-lg">Grant Gmail access</div>
+                <p className="text-base text-gray-600 mt-1">On first use, approve Gmail permissions. If prompted later, go to Dashboard → Gmail Integration → Reconnect Gmail.</p>
               </div>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <div className="text-sm text-gray-500">Step 3</div>
-                <div className="font-medium text-gray-900">Start your trial</div>
-                <p className="text-sm text-gray-600 mt-1">Complete checkout to enable continuous processing.</p>
+                <div className="font-medium text-gray-900 text-lg">Start your trial</div>
+                <p className="text-base text-gray-600 mt-1">Complete checkout to enable continuous processing.</p>
               </div>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <div className="text-sm text-gray-500">Step 4</div>
-                <div className="font-medium text-gray-900">Manual sync (optional)</div>
-                <p className="text-sm text-gray-600 mt-1">Dashboard → Gmail Integration → Sync Now to process immediately.</p>
+                <div className="font-medium text-gray-900 text-lg">Setting up the agent</div>
+                <p className="text-base text-gray-600 mt-1">Dashboard → Gmail Integration → check if the email is connected. If not simply press "Reconnect Gmail". Manual sync option is there if required.</p>
               </div>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <div className="text-sm text-gray-500">Step 5</div>
-                <div className="font-medium text-gray-900">Automatic processing</div>
-                <p className="text-sm text-gray-600 mt-1">The agent runs hourly and processes recent inbox emails automatically.</p>
+                <div className="font-medium text-gray-900 text-lg">Automatic processing</div>
+                <p className="text-base text-gray-600 mt-1">The agent runs automatically throughout the day, you wont have to lift a finger.</p>
               </div>
               <div className="bg-white border rounded-lg p-4 shadow-sm">
                 <div className="text-sm text-gray-500">Step 6</div>
-                <div className="font-medium text-gray-900">Manage access</div>
-                <p className="text-sm text-gray-600 mt-1">Dashboard → Account Overview to manage billing or cancel anytime.</p>
+                  <div className="font-medium text-gray-900 text-lg">Manage access</div>
+                <p className="text-base text-gray-600 mt-1">Dashboard → Account Overview to manage billing, cancel subscription, or reconnect Gmail.</p>
               </div>
             </div>
           </div>

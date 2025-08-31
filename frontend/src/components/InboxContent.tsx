@@ -16,16 +16,16 @@ export function InboxContent() {
       time: "2:34 PM",
       important: true,
       unread: true,
-      category: "Work"
+      category: "Projects / Workstreams / Meetings"
     },
     {
-      sender: "Mom",
-      subject: "Family dinner this Sunday?",
-      preview: "Hey honey, would you like to come over for dinner this Sunday? I'm making your favorite...",
+      sender: "Doofenshmirtz inc. (Account Manager)",
+      subject: "SOW approval needed to start next phase",
+      preview: "Hi team, could you review and approve the Statement of Work so we can kick off this week?",
       time: "1:45 PM",
       important: true,
       unread: true,
-      category: "Family"
+      category: "Clients / External"
     },
     {
       sender: "GitHub",
@@ -33,7 +33,7 @@ export function InboxContent() {
       preview: "Congratulations! Your pull request #247 has been successfully merged into main...",
       time: "12:30 PM",
       unread: false,
-      category: "Work"
+      category: "Projects / Workstreams / Meetings"
     },
     {
       sender: "Chase Bank",
@@ -41,7 +41,7 @@ export function InboxContent() {
       preview: "Your monthly credit card statement is now available for review...",
       time: "11:15 AM",
       unread: false,
-      category: "Finance"
+      category: "Finance & Admin"
     },
     {
       sender: "Google",
@@ -49,7 +49,7 @@ export function InboxContent() {
       preview: "We detected a new sign-in to your Google account from a new device...",
       time: "10:45 AM",
       unread: true,
-      category: "Security"
+      category: "Security & Systems"
     },
     {
       sender: "Amazon",
@@ -57,7 +57,7 @@ export function InboxContent() {
       preview: "Use this code to complete your purchase: 123456...",
       time: "10:30 AM",
       unread: true,
-      category: "OTPs"
+      category: "Security & Systems"
     },
     {
       sender: "Project Manager",
@@ -65,17 +65,17 @@ export function InboxContent() {
       preview: "The client meeting has been moved up to 3 PM today. Please prepare...",
       time: "9:15 AM",
       unread: true,
-      category: "Urgent"
+      category: "Urgent / Action Required"
     }
   ];
 
   const categoryColors: Record<string, string> = {
-    Work: "bg-blue-100 text-blue-700",
-    Finance: "bg-green-100 text-green-700",
-    Security: "bg-red-100 text-red-700",
-    OTPs: "bg-purple-100 text-purple-700",
-    Family: "bg-pink-100 text-pink-700",
-    Urgent: "bg-orange-100 text-orange-700",
+    "Urgent / Action Required": "bg-orange-100 text-orange-700",
+    "Waiting on Others": "bg-yellow-100 text-yellow-700",
+    "Projects / Workstreams / Meetings": "bg-blue-100 text-blue-700",
+    "Clients / External": "bg-teal-100 text-teal-700",
+    "Finance & Admin": "bg-green-100 text-green-700",
+    "Security & Systems": "bg-red-100 text-red-700",
     Spam: "bg-gray-100 text-gray-700"
   };
 
@@ -113,9 +113,13 @@ export function InboxContent() {
               <h2 className="text-4xl font-bold text-gray-900 mb-4">
                 Your inbox is now perfectly organized!
               </h2>
+              <p className="text-xl text-gray-900 italic mb-3 leading-relaxed">
+                That extra "g" is annoying. So are all those unread emails.
+              </p>
               <p className="text-xl text-gray-700 mb-8 leading-relaxed">
-                Welcome to your new, stress-free email experience. Our AI has automatically sorted your emails, 
-                filtered out spam, and prioritized what matters most. Notice how clean and organized everything looks?
+                Welcome to your new, stress-free
+                email experience. Our agent automatically sorts your inbox, filters unnecessary emails, and
+                prioritizes what matters most. Notice how clean and organized everything looks?
               </p>
               <div className="flex justify-between items-center">
                 <div className="flex space-x-5">

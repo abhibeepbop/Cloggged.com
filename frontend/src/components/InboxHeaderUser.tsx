@@ -36,11 +36,9 @@ export function InboxHeaderUser() {
             <Menu className="h-5 w-5" />
           </Button>
           <div className="flex items-center gap-2">
-            <div className="h-8 w-8 rounded bg-primary flex items-center justify-center">
-              <span className="text-primary-foreground text-sm font-medium">C</span>
-            </div>
+            <img src="/cloggged_logo.png" alt="Logo" className="block h-10 w-15" />
             <span 
-              className="text-xl font-semibold text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
+              className="text-xl leading-none font-semibold text-gray-700 cursor-pointer hover:text-gray-900 transition-colors"
               onClick={() => navigate('/')}
             >
               cloggged.com

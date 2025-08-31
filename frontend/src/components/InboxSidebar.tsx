@@ -18,8 +18,7 @@ export function InboxSidebar() {
     { icon: Calendar, label: "Projects / Workstreams / Meetings", count: 7 },
     { icon: Users, label: "Clients / External", count: 9 },
     { icon: Wallet, label: "Finance & Admin", count: 42 },
-    { icon: Shield, label: "Security & Systems", count: 8 },
-    { icon: ClipboardList, label: "Projects / Workstreams / Meetings", count: 156 },
+    { icon: Shield, label: "Security & Systems", count: 8 }
   ];
 
   return (

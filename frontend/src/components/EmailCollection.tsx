@@ -26,8 +26,9 @@ export function EmailCollection({ onEmailSubmitted }: EmailCollectionProps) {
     <div className="bg-white min-h-screen flex flex-col max-w-6xl mx-auto">
       {/* Header */}
       <header className="flex justify-between items-center px-8 py-6 border-b border-black">
-        <div className="text-[24px] font-bold text-black">
-          cloggged.com
+        <div className="flex items-center gap-2">
+          <img src="/cloggged_logo.png" alt="Logo" className="h-10 w-10" />
+          <div className="text-[24px] font-bold text-black">cloggged.com</div>
         </div>
       </header>
 

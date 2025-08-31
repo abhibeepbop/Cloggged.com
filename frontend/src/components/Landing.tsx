@@ -12,8 +12,9 @@ export function Landing({ onGetStarted, onWatchDemo, onSignIn }: LandingProps) {
     <div className="bg-white min-h-screen flex flex-col max-w-6xl mx-auto">
       {/* Header */}
       <header className="flex justify-between items-center px-8 py-6 border-b border-black">
-        <div className="text-[24px] font-bold text-black">
-          cloggged.com
+        <div className="flex items-center gap-2">
+          <img src="/cloggged_logo.png" alt="Logo" className="block h-10 w-15" />
+          <div className="text-[24px] leading-none font-bold text-black">cloggged.com</div>
         </div>
         
         <nav className="flex gap-3">
