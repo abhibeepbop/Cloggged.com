@@ -1169,16 +1169,19 @@ def background_email_job():
     
     print("=== BACKGROUND JOB COMPLETED ===")
 
-# APScheduler setup
-scheduler = BackgroundScheduler()
-scheduler.add_job(background_email_job, 'interval', minutes=20)
-scheduler.start()
-
-def run_scheduler_in_thread():
-    while True:
-        time.sleep(1)
-
-threading.Thread(target=run_scheduler_in_thread, daemon=True).start() 
+# APScheduler setup (disabled by default; prefer external cron)
+import os as _os
+if _os.getenv("ENABLE_IN_APP_SCHEDULER", "false").strip().lower() == "true":
+    interval_min = int(_os.getenv("SCHEDULER_INTERVAL_MIN", "20"))
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(
+        background_email_job,
+        'interval',
+        minutes=interval_min,
+        coalesce=True,
+        max_instances=1,
+    )
+    scheduler.start()
 
 @app.get("/user/{user_id}/classified-emails")
 def get_classified_emails(user_id: str):
