@@ -856,23 +856,28 @@ def process_user(user_doc, verbose: bool = False):
                 if debug:
                     print(f"Found classification label: {label['name']} (ID: {label['id']}, Type: {label.get('type', 'unknown')})")
         
-        # Build query to exclude emails with classification labels
-        query = 'in:inbox'
+        # Build query: prefer name-based NOT label:<name>; fallback to ID-based NOT label:<id>
+        name_based_query = 'in:inbox'
+        if found_labels:
+            for label in found_labels:
+                name_based_query += f' NOT label:{label["name"]}'
+
+        id_based_query = 'in:inbox'
         if classification_label_ids:
             for label_id in classification_label_ids:
-                query += f' NOT label:{label_id}'
+                id_based_query += f' NOT label:{label_id}'
+
+        if found_labels:
+            query = name_based_query
             if debug:
-                print(f"Found {len(classification_label_ids)} classification labels to exclude")
-                print(f"Classification labels found: {[label['name'] for label in found_labels]}")
-                print(f"Label IDs to exclude: {classification_label_ids}")
+                print(f"Using name-based exclusion. Names: {[label['name'] for label in found_labels]}")
                 print(f"FINAL QUERY: {query}")
         else:
+            query = id_based_query
             if debug:
-                print("No classification labels found yet")
-        
-        # Use ID-based exclusion only; do not override query with names
-        if debug:
-            print(f"Using ID-based exclusion only. Query: {query}")
+                print("No label names available; falling back to ID-based exclusion")
+                print(f"Label IDs to exclude: {classification_label_ids}")
+                print(f"FINAL QUERY: {query}")
         
         # Enforce monthly cap: stop processing if user exceeded 10,000 emails this month
         monthly_cap = _get_env_int("MONTHLY_EMAIL_CAP", 10000)
@@ -887,6 +892,7 @@ def process_user(user_doc, verbose: bool = False):
         per_run_limit = min(50, remaining_quota)
         request_params = {
             'userId': 'me',
+            'labelIds': ['INBOX'],
             'maxResults': per_run_limit,
             'q': query
         }
@@ -1156,19 +1162,10 @@ def background_email_job():
             if not user_data.get('subscribed'):
                 user_ref.update({'can_access': False, 'email_processing_enabled': False})
         
-        if not free_trial and not subscribed:
-            # Update next_billing_date to tomorrow for immediate billing when they pay
-            tomorrow = current_time + (24 * 60 * 60)  # 24 hours from now
-            user_ref.update({
-                'last_sync': current_time,
-                'next_billing_date': tomorrow
-            })
-            print(f"Updated billing date for user {user_doc.id} to tomorrow (no active access)")
-        else:
-            # Update last_sync and maintain can_access fallbacks
-            docd = user_doc.to_dict() or {}
-            can_access = _compute_can_access(docd)
-            user_ref.update({'last_sync': current_time, 'can_access': can_access})
+        # Always update last_sync and maintain can_access; do not override next_billing_date here
+        docd = user_doc.to_dict() or {}
+        can_access = _compute_can_access(docd)
+        user_ref.update({'last_sync': current_time, 'can_access': can_access})
     
     print("=== BACKGROUND JOB COMPLETED ===")
 

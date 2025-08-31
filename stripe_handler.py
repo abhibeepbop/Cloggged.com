@@ -184,6 +184,10 @@ class StripeHandler:
                 invoice = event['data']['object']
                 # Handle first payment after trial
                 return self.handle_first_payment(invoice)
+            elif event['type'] == 'invoice.payment_failed':
+                invoice = event['data']['object']
+                # Immediately revoke access on failed renewal/payment
+                return self.handle_invoice_failed(invoice)
                 
         except ValueError as e:
             raise HTTPException(status_code=400, detail="Invalid payload")
@@ -205,10 +209,32 @@ class StripeHandler:
     
     def handle_payment_failure(self, payment_intent):
         """Handle failed payment"""
-        return {
-            'status': 'failed',
-            'payment_intent_id': payment_intent['id']
-        }
+        try:
+            customer_id = payment_intent.get('customer')
+            email = payment_intent.get('receipt_email') or payment_intent.get('customer_email')
+            db = firestore.client()
+            users_ref = db.collection("identifier")
+            user_ref = None
+            if email:
+                docs = users_ref.where("email", "==", email).limit(1).get()
+                if docs:
+                    user_ref = users_ref.document(docs[0].id)
+            if user_ref is None and customer_id:
+                docs = users_ref.where("customer_id", "==", customer_id).limit(1).get()
+                if docs:
+                    user_ref = users_ref.document(docs[0].id)
+            if user_ref is not None:
+                update = {
+                    "subscription_status": "past_due",
+                    "can_access": False
+                }
+                user_ref.update(update)
+            return {
+                'status': 'failed',
+                'payment_intent_id': payment_intent['id']
+            }
+        except Exception as e:
+            return {'status': 'failed', 'error': str(e)}
     
     def handle_subscription_created(self, subscription):
         """Handle subscription creation (trial started)"""
@@ -373,22 +399,9 @@ class StripeHandler:
                     "subscription_status": "active",
                     "payment_completed": True,
                     "subscribed": True,
-                    "payment_date": datetime.utcnow().timestamp()
+                    "payment_date": datetime.utcnow().timestamp(),
+                    "can_access": True
                 }
-                # Maintain can_access
-                try:
-                    now_ts = int(time.time())
-                except Exception:
-                    now_ts = 0
-                # Read trial_end to recompute
-                doc = user_ref.get()
-                trial_end_val = None
-                try:
-                    docd = doc.to_dict() or {}
-                    trial_end_val = docd.get("trial_end")
-                except Exception:
-                    pass
-                update["can_access"] = bool(True or (isinstance(trial_end_val, int) and trial_end_val > now_ts))
                 user_ref.update(update)
             else:
                 print(f"[Stripe] No user matched by email/customer_id for invoice {invoice.get('id')}; skipping update")
@@ -401,3 +414,37 @@ class StripeHandler:
         except Exception as e:
             print(f"[Stripe] Error in handle_first_payment: {e}")
             return {'status': 'first_payment', 'error': str(e)}
+
+    def handle_invoice_failed(self, invoice):
+        """Revoke access immediately on invoice.payment_failed (strict)."""
+        try:
+            customer_email = invoice.get('customer_email')
+            customer_id = invoice.get('customer')
+            print(f"[Stripe] invoice.payment_failed for invoice={invoice.get('id')} customer_id={customer_id} email={customer_email}")
+            db = firestore.client()
+            users_ref = db.collection("identifier")
+            user_ref = None
+            if customer_email:
+                docs = users_ref.where("email", "==", customer_email).limit(1).get()
+                if docs:
+                    user_ref = users_ref.document(docs[0].id)
+            if user_ref is None and customer_id:
+                docs = users_ref.where("customer_id", "==", customer_id).limit(1).get()
+                if docs:
+                    user_ref = users_ref.document(docs[0].id)
+            if user_ref is not None:
+                print(f"[Stripe] Updating user {user_ref.id} to past_due and can_access=false")
+                user_ref.update({
+                    "subscription_status": "past_due",
+                    "can_access": False
+                })
+            else:
+                print(f"[Stripe] No user matched by email/customer_id for failed invoice {invoice.get('id')}; skipping update")
+            return {
+                'status': 'invoice_failed',
+                'invoice_id': invoice['id'],
+                'customer_email': customer_email
+            }
+        except Exception as e:
+            print(f"[Stripe] Error in handle_invoice_failed: {e}")
+            return {'status': 'invoice_failed', 'error': str(e)}
