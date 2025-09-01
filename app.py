@@ -887,20 +887,41 @@ def process_user(user_doc, verbose: bool = False):
             print(f"Monthly cap reached for {user_email} (cap={monthly_cap}), skipping.")
             return
 
-        # Fetch emails excluding only our classification labels
-        # Cap fetch per run to avoid spikes; do not exceed remaining monthly quota
-        per_run_limit = min(50, remaining_quota)
-        request_params = {
+        # Fetch emails excluding only our classification labels (with pagination)
+        # Cap fetch per page to 50 and overall by remaining monthly quota and max pages
+        per_page_limit = min(50, remaining_quota)
+        max_pages = _get_env_int("FETCH_MAX_PAGES", 3)
+        total_cap = min(remaining_quota, max_pages * per_page_limit)
+
+        base_request_params = {
             'userId': 'me',
             'labelIds': ['INBOX'],
-            'maxResults': per_run_limit,
+            'maxResults': per_page_limit,
             'q': query
         }
-        
-        if debug:
-            print(f"Request params: {request_params}")
-        results = service.users().messages().list(**request_params).execute()
-        messages = results.get('messages', [])
+
+        messages = []
+        page = 0
+        next_token = None
+        while True:
+            if remaining_quota <= 0 or len(messages) >= total_cap:
+                break
+            page += 1
+            if page > max_pages:
+                break
+            request_params = dict(base_request_params)
+            if next_token:
+                request_params['pageToken'] = next_token
+            if debug:
+                print(f"Fetching page {page}/{max_pages} with params: {request_params}")
+            results = service.users().messages().list(**request_params).execute()
+            page_messages = results.get('messages', []) or []
+            messages.extend(page_messages)
+            next_token = results.get('nextPageToken')
+            if debug:
+                print(f"Fetched {len(page_messages)} on page {page}; cumulative {len(messages)}")
+            if not next_token or len(page_messages) == 0:
+                break
         
         if debug:
             print(f"Fetched {len(messages)} total emails from inbox for user: {user_email}")

@@ -34,7 +34,9 @@ function Inbox() {
   useEffect(() => {
     if (!authReady) return;
     const authedNow = isAuthenticated();
-    if (authedNow && canAccessDashboard(getStoredUser())) {
+    const path = window.location.pathname;
+    // Only auto-redirect from the dedicated /inbox route; allow '/' (home) for signed-in users
+    if (path === '/inbox' && authedNow && canAccessDashboard(getStoredUser())) {
       window.history.replaceState({}, document.title, '/dashboard');
       window.location.href = '/dashboard';
     }

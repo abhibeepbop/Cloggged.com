@@ -36,7 +36,7 @@ export function QuickActions() {
         How it works
       </Button>
 
-      {/* Contact Support */}
+      {/* Contact Support (dropdown-like popover) */}
       <Popover>
         <PopoverTrigger asChild>
           <Button variant="ghost" size="sm">
@@ -44,10 +44,9 @@ export function QuickActions() {
             Support
           </Button>
         </PopoverTrigger>
-        <PopoverContent className="w-64">
-          <div className="space-y-2 text-sm">
-            <div className="font-medium text-gray-900">Need help?</div>
-            <p className="text-gray-600">Email us any time.</p>
+        <PopoverContent align="end" className="w-56">
+          <div className="text-sm">
+            <div className="font-medium text-gray-900 mb-1">Need help?</div>
             <a href="mailto:vabhi9930@gmail.com" className="text-primary underline">vabhi9930@gmail.com</a>
           </div>
         </PopoverContent>

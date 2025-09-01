@@ -204,6 +204,11 @@ export function InboxContent() {
               How it works
             </Button>
           </div>
+          <div className="mt-6 flex items-center justify-center gap-4 text-sm">
+            <a className="text-gray-600 hover:text-gray-900 underline" href="/privacy.html" target="_blank" rel="noreferrer">Privacy Policy</a>
+            <span className="text-gray-300">|</span>
+            <a className="text-gray-600 hover:text-gray-900 underline" href="/terms.html" target="_blank" rel="noreferrer">Terms of Service</a>
+          </div>
         </div>
       </div>
     </div>
